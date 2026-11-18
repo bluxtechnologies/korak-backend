@@ -73,10 +73,36 @@ it('logs in customer using username', function (): void {
     expect(Auth::guard('customer')->check())->toBeTrue();
 });
 
-it('accepts explicit email or username field in login payload', function (): void {
+it('logs in customer using phone number in login field', function (): void {
+    $customer = Customer::factory()->create([
+        'username' => 'phone_user',
+        'email' => 'phone_user@example.com',
+        'phone_number' => '+2348012345678',
+        'password' => 'SecretPassword123!',
+    ]);
+
+    $response = $this->postJson('/api/v1/auth/login', [
+        'login' => '+2348012345678',
+        'password' => 'SecretPassword123!',
+    ]);
+
+    $response->assertOk()
+        ->assertJson([
+            'data' => [
+                'id' => $customer->ulid,
+                'email' => 'phone_user@example.com',
+                'phone_number' => '+2348012345678',
+            ],
+        ]);
+
+    expect(Auth::guard('customer')->check())->toBeTrue();
+});
+
+it('accepts explicit email, username, or phone_number field in login payload', function (): void {
     $customer = Customer::factory()->create([
         'username' => 'custom_user',
         'email' => 'custom@example.com',
+        'phone_number' => '+2348099887766',
         'password' => 'SecretPassword123!',
     ]);
 
@@ -93,6 +119,13 @@ it('accepts explicit email or username field in login payload', function (): voi
         'password' => 'SecretPassword123!',
     ]);
     $usernameResponse->assertOk();
+
+    // Test with explicit 'phone_number' key
+    $phoneResponse = $this->postJson('/api/v1/auth/login', [
+        'phone_number' => '+2348099887766',
+        'password' => 'SecretPassword123!',
+    ]);
+    $phoneResponse->assertOk();
 });
 
 it('returns identical generic 401 error for wrong password or non-existent account per Doc 08 §1', function (): void {

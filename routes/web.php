@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Api\V1\Webhooks\FinityPayWebhookController;
 use App\Models\Customer;
 use App\Notifications\DeviceVerificationOtpNotification;
@@ -66,3 +67,7 @@ if (app()->environment('local')) {
         });
     });
 }
+
+Route::prefix('admininistator')->group(function (): void {
+    Route::get('login', [AdminAuthController::class, 'login'])->name('admin.login');
+});

@@ -2,7 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\AuditEventName;
 use App\Models\Wallet;
+use App\Services\Audit\AuditLogger;
 use App\Services\Wallet\WalletService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -26,7 +28,7 @@ class ReconcileWalletLedger extends Command
     /**
      * Execute the console command.
      */
-    public function handle(WalletService $walletService): int
+    public function handle(WalletService $walletService, AuditLogger $auditLogger): int
     {
         $this->info('Starting wallet and ledger reconciliation...');
 
@@ -45,6 +47,17 @@ class ReconcileWalletLedger extends Command
                     'ulid' => $wallet->ulid,
                     'balance' => $wallet->balance,
                 ]);
+
+                $auditLogger->log(
+                    event: AuditEventName::WALLET_INTEGRITY_MISMATCH,
+                    subject: $wallet,
+                    metadata: [
+                        'wallet_id' => $wallet->id,
+                        'ulid' => $wallet->ulid,
+                        'customer_id' => $wallet->customer_id,
+                        'balance' => $wallet->balance,
+                    ]
+                );
             }
         }
 

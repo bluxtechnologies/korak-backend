@@ -31,6 +31,8 @@ Korak Digitals is a customer marketplace for airtime, data, VPN, and social medi
 | 21 | Communication Rules | How Collins and Claude work, decide, and report |
 | 22 | Backend Roadmap | 20 phases (B1–B20) with sub-phases |
 | 23 | Frontend Roadmap | 20 phases (F1–F20) with sub-phases |
+| 24 | Frontend Auth Handoff | Stateful SPA session auth, CSRF, login, register, device verification |
+| 25 | Frontend Customer Endpoints Handoff | Bills & VTU, wallet, ledger, notifications, profile, security, trusted devices |
 
 ## Conventions used in these documents
 

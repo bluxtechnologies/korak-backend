@@ -15,6 +15,7 @@ it('registers a new customer and returns 201 with customer resource per Doc 06',
     $payload = [
         'username' => 'johndoe',
         'email' => 'john@example.com',
+        'phone_number' => '+2348012345678',
         'password' => 'SecurePass123!',
         'password_confirmation' => 'SecurePass123!',
     ];
@@ -27,6 +28,7 @@ it('registers a new customer and returns 201 with customer resource per Doc 06',
                 'id',
                 'username',
                 'email',
+                'phone_number',
                 'email_verified_at',
                 'created_at',
             ],
@@ -36,6 +38,7 @@ it('registers a new customer and returns 201 with customer resource per Doc 06',
             'data' => [
                 'username' => 'johndoe',
                 'email' => 'john@example.com',
+                'phone_number' => '+2348012345678',
                 'email_verified_at' => null,
             ],
         ]);
@@ -43,6 +46,7 @@ it('registers a new customer and returns 201 with customer resource per Doc 06',
     $customer = Customer::where('email', 'john@example.com')->first();
     expect($customer)->not->toBeNull()
         ->and($customer->username)->toBe('johndoe')
+        ->and($customer->phone_number)->toBe('+2348012345678')
         ->and(Hash::check('SecurePass123!', $customer->password))->toBeTrue();
 
     // Verify public ID is a valid ULID and NOT an internal integer
@@ -61,40 +65,131 @@ it('registers a new customer and returns 201 with customer resource per Doc 06',
     expect($response->headers->has('X-Request-ID'))->toBeTrue();
 });
 
+it('registers a new customer using phone_number and name without username, auto-generating username', function (): void {
+    Event::fake([Registered::class]);
+
+    $payload = [
+        'name' => 'Collins Okeke',
+        'email' => 'collins@example.com',
+        'phone_number' => '+2348012345678',
+        'password' => 'Secret123!',
+        'password_confirmation' => 'Secret123!',
+        'terms' => true,
+    ];
+
+    $response = $this->postJson('/api/v1/auth/register', $payload);
+
+    $response->assertStatus(201)
+        ->assertJsonStructure([
+            'data' => [
+                'id',
+                'name',
+                'first_name',
+                'last_name',
+                'email',
+                'phone_number',
+                'email_verified_at',
+                'created_at',
+            ],
+            'meta',
+        ])
+        ->assertJson([
+            'data' => [
+                'name' => 'Collins Okeke',
+                'first_name' => 'Collins',
+                'last_name' => 'Okeke',
+                'email' => 'collins@example.com',
+                'phone_number' => '+2348012345678',
+                'email_verified_at' => null,
+            ],
+        ]);
+
+    $customer = Customer::where('email', 'collins@example.com')->first();
+    expect($customer)->not->toBeNull()
+        ->and($customer->first_name)->toBe('Collins')
+        ->and($customer->last_name)->toBe('Okeke')
+        ->and($customer->phone_number)->toBe('+2348012345678')
+        ->and($customer->username)->not->toBeEmpty()
+        ->and(Hash::check('Secret123!', $customer->password))->toBeTrue();
+});
+
 it('fails validation when required fields are missing', function (): void {
     $response = $this->postJson('/api/v1/auth/register', []);
 
     $response->assertStatus(422)
-        ->assertJsonValidationErrors(['username', 'email', 'password'])
+        ->assertJsonValidationErrors(['phone_number', 'email', 'password'])
+        ->assertJsonMissingValidationErrors(['username'])
         ->assertJson([
             'code' => 'validation_failed',
         ]);
 });
 
-it('fails validation when username or email is already taken', function (): void {
+it('fails validation when phone_number or email is already taken', function (): void {
     Customer::factory()->create([
         'username' => 'existing_user',
         'email' => 'existing@example.com',
+        'phone_number' => '+2348012345678',
     ]);
 
     $response = $this->postJson('/api/v1/auth/register', [
-        'username' => 'existing_user',
+        'name' => 'New User',
         'email' => 'existing@example.com',
+        'phone_number' => '+2348012345678',
         'password' => 'Password123!',
         'password_confirmation' => 'Password123!',
     ]);
 
     $response->assertStatus(422)
-        ->assertJsonValidationErrors(['username', 'email'])
+        ->assertJsonValidationErrors(['phone_number', 'email'])
         ->assertJson([
             'code' => 'validation_failed',
+            'errors' => [
+                'phone_number' => [
+                    'The phone number has already been taken.',
+                ],
+            ],
+        ]);
+});
+
+it('fails validation when phone_number has invalid format or is too short', function (): void {
+    // Too short (min 7)
+    $responseShort = $this->postJson('/api/v1/auth/register', [
+        'name' => 'Test User',
+        'email' => 'shortphone@example.com',
+        'phone_number' => '12345',
+        'password' => 'Password123!',
+        'password_confirmation' => 'Password123!',
+    ]);
+
+    $responseShort->assertStatus(422)
+        ->assertJsonValidationErrors(['phone_number']);
+
+    // Invalid characters
+    $responseInvalid = $this->postJson('/api/v1/auth/register', [
+        'name' => 'Test User',
+        'email' => 'invalidphone@example.com',
+        'phone_number' => 'phone-number-abc',
+        'password' => 'Password123!',
+        'password_confirmation' => 'Password123!',
+    ]);
+
+    $responseInvalid->assertStatus(422)
+        ->assertJsonValidationErrors(['phone_number'])
+        ->assertJson([
+            'code' => 'validation_failed',
+            'errors' => [
+                'phone_number' => [
+                    'The phone number format is invalid.',
+                ],
+            ],
         ]);
 });
 
 it('fails validation when password confirmation does not match', function (): void {
     $response = $this->postJson('/api/v1/auth/register', [
-        'username' => 'valid_user',
+        'name' => 'Valid User',
         'email' => 'valid@example.com',
+        'phone_number' => '+2348012345678',
         'password' => 'Password123!',
         'password_confirmation' => 'DifferentPassword!',
     ]);
@@ -108,8 +203,9 @@ it('fails validation when password confirmation does not match', function (): vo
 
 it('fails validation when password is too short', function (): void {
     $response = $this->postJson('/api/v1/auth/register', [
-        'username' => 'valid_user',
+        'name' => 'Valid User',
         'email' => 'valid@example.com',
+        'phone_number' => '+2348012345678',
         'password' => 'short',
         'password_confirmation' => 'short',
     ]);
@@ -121,10 +217,11 @@ it('fails validation when password is too short', function (): void {
         ]);
 });
 
-it('fails validation when username contains invalid characters', function (): void {
+it('fails validation when username is explicitly provided with invalid characters', function (): void {
     $response = $this->postJson('/api/v1/auth/register', [
         'username' => 'invalid username with spaces',
         'email' => 'valid@example.com',
+        'phone_number' => '+2348012345678',
         'password' => 'Password123!',
         'password_confirmation' => 'Password123!',
     ]);

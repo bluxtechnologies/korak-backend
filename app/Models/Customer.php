@@ -17,7 +17,12 @@ use Illuminate\Notifications\Notifiable;
  * @property int $id
  * @property string $ulid
  * @property string $username
+ * @property string|null $first_name
+ * @property string|null $last_name
  * @property string $email
+ * @property string|null $phone
+ * @property string|null $phone_number
+ * @property string|null $provider_customer_id
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property string|null $remember_token
@@ -26,6 +31,7 @@ use Illuminate\Notifications\Notifiable;
  * @property-read Collection<int, CustomerTrustedDevice> $trustedDevices
  * @property-read Collection<int, CustomerDeviceChallenge> $deviceChallenges
  * @property-read Wallet|null $wallet
+ * @property-read CustomerVirtualAccount|null $virtualAccount
  */
 class Customer extends Authenticatable
 {
@@ -50,7 +56,12 @@ class Customer extends Authenticatable
     protected $fillable = [
         'ulid',
         'username',
+        'first_name',
+        'last_name',
         'email',
+        'phone',
+        'phone_number',
+        'provider_customer_id',
         'email_verified_at',
         'password',
     ];
@@ -116,5 +127,47 @@ class Customer extends Authenticatable
     public function wallet(): HasOne
     {
         return $this->hasOne(Wallet::class);
+    }
+
+    /**
+     * Set the customer's phone number and synchronize with phone attribute.
+     */
+    public function setPhoneNumberAttribute(?string $value): void
+    {
+        $this->attributes['phone_number'] = $value;
+        if (empty($this->attributes['phone'])) {
+            $this->attributes['phone'] = $value;
+        }
+    }
+
+    /**
+     * Set the customer's phone and synchronize with phone_number attribute.
+     */
+    public function setPhoneAttribute(?string $value): void
+    {
+        $this->attributes['phone'] = $value;
+        if (empty($this->attributes['phone_number'])) {
+            $this->attributes['phone_number'] = $value;
+        }
+    }
+
+    /**
+     * Get the customer's dedicated virtual account.
+     *
+     * @return HasOne<CustomerVirtualAccount, $this>
+     */
+    public function virtualAccount(): HasOne
+    {
+        return $this->hasOne(CustomerVirtualAccount::class);
+    }
+
+    /**
+     * Get the customer's support tickets.
+     *
+     * @return HasMany<SupportTicket, $this>
+     */
+    public function supportTickets(): HasMany
+    {
+        return $this->hasMany(SupportTicket::class);
     }
 }

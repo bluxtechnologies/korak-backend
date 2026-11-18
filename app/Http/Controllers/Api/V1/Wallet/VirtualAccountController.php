@@ -1,0 +1,125 @@
+<?php
+
+namespace App\Http\Controllers\Api\V1\Wallet;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\Wallet\GenerateDedicatedAccountRequest;
+use App\Http\Resources\Api\V1\CustomerVirtualAccountResource;
+use App\Http\Responses\ApiResponse;
+use App\Models\Customer;
+use App\Models\CustomerVirtualAccount;
+use App\Services\Providers\FinityPayService;
+use App\Services\Wallet\WalletService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class VirtualAccountController extends Controller
+{
+    /**
+     * Create a new VirtualAccountController instance.
+     */
+    public function __construct(
+        protected WalletService $walletService,
+        protected FinityPayService $finityPayService,
+    ) {}
+
+    /**
+     * Get the authenticated customer's dedicated virtual account details.
+     * GET /api/v1/wallet/dedicated-account
+     */
+    public function show(Request $request): JsonResponse
+    {
+        /** @var Customer $customer */
+        $customer = $request->user('customer');
+
+        /** @var CustomerVirtualAccount|null $virtualAccount */
+        $virtualAccount = CustomerVirtualAccount::where('customer_id', $customer->id)
+            ->where('status', 'active')
+            ->first();
+
+        if (! $virtualAccount) {
+            return ApiResponse::success(
+                data: null,
+                meta: [
+                    'has_account' => false,
+                    'requires_phone' => empty($customer->phone),
+                ]
+            );
+        }
+
+        return ApiResponse::success(
+            data: new CustomerVirtualAccountResource($virtualAccount),
+            meta: [
+                'has_account' => true,
+            ]
+        );
+    }
+
+    /**
+     * Generate or retrieve a dedicated virtual bank account for the authenticated customer.
+     * POST /api/v1/wallet/dedicated-account
+     */
+    public function store(GenerateDedicatedAccountRequest $request): JsonResponse
+    {
+        /** @var Customer $customer */
+        $customer = $request->user('customer');
+
+        // Check if customer already has an active virtual account
+        /** @var CustomerVirtualAccount|null $existing */
+        $existing = CustomerVirtualAccount::where('customer_id', $customer->id)
+            ->where('status', 'active')
+            ->first();
+
+        if ($existing) {
+            return ApiResponse::success(
+                data: new CustomerVirtualAccountResource($existing),
+                meta: ['has_account' => true, 'already_existed' => true]
+            );
+        }
+
+        // Update profile names and phone if provided in request
+        $dirty = false;
+        if ($request->filled('first_name') && ! $customer->first_name) {
+            $customer->first_name = (string) $request->input('first_name');
+            $dirty = true;
+        }
+        if ($request->filled('last_name') && ! $customer->last_name) {
+            $customer->last_name = (string) $request->input('last_name');
+            $dirty = true;
+        }
+        if ($request->filled('phone')) {
+            $customer->phone = (string) $request->input('phone');
+            $dirty = true;
+        }
+        if ($dirty) {
+            $customer->save();
+        }
+
+        $wallet = $this->walletService->getOrCreateWallet($customer);
+
+        $result = $this->finityPayService->createVirtualAccount(
+            customer: $customer,
+            wallet: $wallet,
+            phone: $customer->phone
+        );
+
+        if ($result['status'] !== 'success') {
+            return ApiResponse::error(
+                message: $result['message'] ?? 'Unable to generate dedicated bank account at this time.',
+                code: 'dedicated_account_generation_failed',
+                status: 502
+            );
+        }
+
+        /** @var CustomerVirtualAccount $account */
+        $account = CustomerVirtualAccount::where('customer_id', $customer->id)
+            ->where('status', 'active')
+            ->firstOrFail();
+
+        return ApiResponse::success(
+            data: new CustomerVirtualAccountResource($account),
+            meta: ['has_account' => true, 'created' => true],
+            status: 201
+        );
+    }
+}

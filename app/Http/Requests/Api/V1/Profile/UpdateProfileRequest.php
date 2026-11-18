@@ -33,6 +33,25 @@ class UpdateProfileRequest extends FormRequest
                 'regex:/^[a-zA-Z0-9_]+$/',
                 Rule::unique('customers', 'username')->ignore($customerId),
             ],
+            'first_name' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:60',
+            ],
+            'last_name' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:60',
+            ],
+            'phone' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:20',
+                'regex:/^[0-9+\s\-()]+$/',
+            ],
             'email' => [
                 'sometimes',
                 'string',

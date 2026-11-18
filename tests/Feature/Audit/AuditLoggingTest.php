@@ -24,6 +24,7 @@ it('records auth.registered event upon successful customer registration per Doc 
     $response = $this->postJson('/api/v1/auth/register', [
         'username' => 'audited_user',
         'email' => 'audited@example.com',
+        'phone_number' => '+2348011223344',
         'password' => 'Password123!',
         'password_confirmation' => 'Password123!',
     ]);

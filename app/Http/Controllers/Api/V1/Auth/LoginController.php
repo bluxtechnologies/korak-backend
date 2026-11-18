@@ -34,12 +34,24 @@ final class LoginController extends Controller
         $identifier = $request->identifier();
         $password = (string) $request->input('password');
 
-        // Look up by email if formatted as email, otherwise by username (Doc 04 §3).
+        // Look up by email if formatted as email, otherwise by username or phone number (Doc 04 §3).
         $isEmail = filter_var($identifier, FILTER_VALIDATE_EMAIL) !== false;
 
-        $customer = $isEmail
-            ? Customer::where('email', $identifier)->first()
-            : Customer::where('username', $identifier)->first();
+        if ($isEmail) {
+            $customer = Customer::where('email', $identifier)->first();
+        } else {
+            $customer = Customer::where('username', $identifier)
+                ->orWhere('phone_number', $identifier)
+                ->orWhere('phone', $identifier)
+                ->first();
+
+            if (! $customer && preg_match('/\d{7,}/', $identifier)) {
+                $cleaned = preg_replace('/[^\d+]/', '', $identifier);
+                $customer = Customer::where('phone_number', $cleaned)
+                    ->orWhere('phone', $cleaned)
+                    ->first();
+            }
+        }
 
         // 1. Account does not exist: run dummy hash to protect against timing attacks (Doc 08 §1).
         if (! $customer) {
@@ -130,6 +142,7 @@ final class LoginController extends Controller
 
             return ApiResponse::success([
                 'status' => 'device_verification_required',
+                'requires_device_verification' => true,
                 'challenge_token' => $challenge['challenge_token'],
                 'expires_at' => $challenge['expires_at']->toIso8601String(),
             ]);

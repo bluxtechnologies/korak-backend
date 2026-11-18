@@ -6,8 +6,10 @@ use App\Enums\FundingStatus;
 use App\Enums\LedgerEntryType;
 use App\Models\BillOrder;
 use App\Models\Customer;
+use App\Models\CustomerVirtualAccount;
 use App\Models\FundingRecord;
 use App\Models\FundingWebhookEvent;
+use App\Models\Wallet;
 use App\Notifications\WalletFundedNotification;
 use App\Services\Wallet\WalletService;
 use Exception;
@@ -430,6 +432,186 @@ class FinityPayService
     }
 
     /**
+     * Register customer on FinityPay provider.
+     *
+     * @return array{status: string, data?: array<string, mixed>, message?: string}
+     */
+    public function createCustomer(Customer $customer, ?string $phone = null): array
+    {
+        $secretKey = $this->getSecretKey();
+        $baseUrl = $this->getBaseUrl();
+
+        if (! $secretKey) {
+            return [
+                'status' => 'error',
+                'message' => 'Payment gateway credentials are not configured.',
+            ];
+        }
+
+        $customerPhone = $phone ?: $customer->phone ?: '08000000000';
+        $fullName = trim("{$customer->first_name} {$customer->last_name}") ?: $customer->username;
+
+        $payload = [
+            'name' => $fullName,
+            'email' => $customer->email,
+            'phone' => $customerPhone,
+        ];
+
+        try {
+            $headers = $this->buildHeaders();
+            $timeout = (int) config('services.finitypay.timeout', 25);
+
+            /** @var Response $response */
+            $response = Http::timeout($timeout)
+                ->withHeaders($headers)
+                ->post($baseUrl.'/customers', $payload);
+
+            if ($response->successful()) {
+                /** @var array<string, mixed> $body */
+                $body = $response->json() ?? [];
+                /** @var array<string, mixed> $data */
+                $data = isset($body['data']) && is_array($body['data']) ? $body['data'] : $body;
+
+                $providerCustomerId = (string) ($data['id'] ?? $data['uuid'] ?? '');
+                if ($providerCustomerId !== '') {
+                    $customer->update(['provider_customer_id' => $providerCustomerId]);
+                }
+
+                return [
+                    'status' => 'success',
+                    'data' => $data,
+                ];
+            }
+
+            return [
+                'status' => 'error',
+                'message' => $response->json('message') ?? 'Failed to register customer with payment provider.',
+            ];
+        } catch (Exception $e) {
+            Log::error('FinityPay createCustomer exception', ['error' => $e->getMessage()]);
+
+            return [
+                'status' => 'error',
+                'message' => 'Could not connect to payment provider.',
+            ];
+        }
+    }
+
+    /**
+     * Create or retrieve a dedicated virtual account for customer deposit.
+     *
+     * @return array{status: string, data?: array<string, mixed>, message?: string}
+     */
+    public function createVirtualAccount(Customer $customer, Wallet $wallet, ?string $phone = null): array
+    {
+        // If customer already has an active virtual account, return it immediately
+        /** @var CustomerVirtualAccount|null $existing */
+        $existing = CustomerVirtualAccount::where('customer_id', $customer->id)
+            ->where('status', 'active')
+            ->first();
+
+        if ($existing) {
+            return [
+                'status' => 'success',
+                'data' => [
+                    'id' => $existing->ulid,
+                    'bank_name' => $existing->bank_name,
+                    'bank_code' => $existing->bank_code,
+                    'account_number' => $existing->account_number,
+                    'account_name' => $existing->account_name,
+                    'account_reference' => $existing->account_reference,
+                    'status' => $existing->status,
+                ],
+            ];
+        }
+
+        $secretKey = $this->getSecretKey();
+        $baseUrl = $this->getBaseUrl();
+
+        if (! $secretKey) {
+            return [
+                'status' => 'error',
+                'message' => 'Payment gateway credentials are not configured.',
+            ];
+        }
+
+        // Ensure customer is registered on provider if not already
+        if (! $customer->provider_customer_id) {
+            $customerRes = $this->createCustomer($customer, $phone);
+            if ($customerRes['status'] !== 'success') {
+                return $customerRes;
+            }
+        }
+
+        $customerPhone = $phone ?: $customer->phone ?: '08000000000';
+        $fullName = trim("{$customer->first_name} {$customer->last_name}") ?: $customer->username;
+
+        $payload = [
+            'customer_id' => $customer->provider_customer_id,
+            'customer_email' => $customer->email,
+            'customer_name' => $fullName,
+            'customer_phone' => $customerPhone,
+        ];
+
+        try {
+            $headers = $this->buildHeaders();
+            $timeout = (int) config('services.finitypay.timeout', 25);
+
+            /** @var Response $response */
+            $response = Http::timeout($timeout)
+                ->withHeaders($headers)
+                ->post($baseUrl.'/virtual-accounts', $payload);
+
+            if ($response->successful()) {
+                /** @var array<string, mixed> $body */
+                $body = $response->json() ?? [];
+                /** @var array<string, mixed> $data */
+                $data = isset($body['data']) && is_array($body['data']) ? $body['data'] : $body;
+
+                /** @var CustomerVirtualAccount $account */
+                $account = CustomerVirtualAccount::create([
+                    'customer_id' => $customer->id,
+                    'wallet_id' => $wallet->id,
+                    'provider' => 'finitypay',
+                    'provider_account_id' => isset($data['id']) ? (string) $data['id'] : (isset($data['account_id']) ? (string) $data['account_id'] : null),
+                    'account_reference' => (string) ($data['reference'] ?? 'va_'.uniqid()),
+                    'bank_name' => (string) ($data['bank_name'] ?? 'Wema Bank'),
+                    'bank_code' => isset($data['bank_code']) ? (string) $data['bank_code'] : null,
+                    'account_number' => (string) ($data['account_number'] ?? ''),
+                    'account_name' => (string) ($data['account_name'] ?? "COFINANCE / {$fullName}"),
+                    'status' => 'active',
+                    'metadata' => $data,
+                ]);
+
+                return [
+                    'status' => 'success',
+                    'data' => [
+                        'id' => $account->ulid,
+                        'bank_name' => $account->bank_name,
+                        'bank_code' => $account->bank_code,
+                        'account_number' => $account->account_number,
+                        'account_name' => $account->account_name,
+                        'account_reference' => $account->account_reference,
+                        'status' => $account->status,
+                    ],
+                ];
+            }
+
+            return [
+                'status' => 'error',
+                'message' => $response->json('message') ?? 'Failed to generate dedicated virtual account.',
+            ];
+        } catch (Exception $e) {
+            Log::error('FinityPay createVirtualAccount exception', ['error' => $e->getMessage()]);
+
+            return [
+                'status' => 'error',
+                'message' => 'Could not connect to payment provider.',
+            ];
+        }
+    }
+
+    /**
      * Verify payment status on the gateway.
      *
      * @return array{status: string, data?: array<string, mixed>, message?: string}
@@ -683,7 +865,34 @@ class FinityPayService
             ->orWhere('provider_reference', $reference)
             ->first();
 
-        // If not matched by reference, match by customer email
+        // If not matched by reference, match by dedicated virtual account
+        $accountNumber = (string) ($account['account_number'] ?? '');
+        $accountRef = (string) ($account['reference'] ?? '');
+
+        if (! $fundingRecord && ($accountNumber !== '' || $accountRef !== '')) {
+            /** @var CustomerVirtualAccount|null $virtualAccount */
+            $virtualAccount = CustomerVirtualAccount::where('account_number', $accountNumber)
+                ->orWhere('account_reference', $accountRef)
+                ->first();
+
+            if ($virtualAccount) {
+                $customer = $virtualAccount->customer;
+                $wallet = $virtualAccount->wallet;
+                $fundingRecord = FundingRecord::create([
+                    'customer_id' => $customer->id,
+                    'wallet_id' => $wallet->id,
+                    'provider' => 'finitypay',
+                    'reference' => 'KORAK-FUND-'.strtoupper($eventId),
+                    'provider_reference' => $reference,
+                    'amount' => $amountInKobo,
+                    'currency' => 'NGN',
+                    'status' => FundingStatus::PENDING,
+                    'sender_name' => $senderName,
+                ]);
+            }
+        }
+
+        // If not matched by account, match by customer email
         if (! $fundingRecord && $customerEmail !== '') {
             /** @var Customer|null $customer */
             $customer = Customer::where('email', $customerEmail)->first();

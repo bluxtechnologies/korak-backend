@@ -26,4 +26,9 @@ enum AuditEventName: string
     case PROFILE_UPDATED = 'profile.updated';
     case SESSION_REVOKED = 'session.revoked';
     case SESSION_REVOKED_OTHER = 'session.revoked_other';
+
+    // Money, Ledger & Reconciliation events (Doc 12 §2, Doc 14 §7 & Roadmap B14/B16)
+    case BILL_RECONCILED = 'bill.reconciled';
+    case FUNDING_RECONCILED = 'funding.reconciled';
+    case WALLET_INTEGRITY_MISMATCH = 'wallet.integrity_mismatch';
 }

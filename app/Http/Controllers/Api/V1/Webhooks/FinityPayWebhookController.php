@@ -30,6 +30,8 @@ class FinityPayWebhookController extends Controller
     {
         $signature = $request->header('x-cofinance-signature')
             ?: $request->header('x-finity-signature')
+            ?: $request->header('x-finitypay-signature')
+            ?: $request->header('x-signature')
             ?: $request->header('signature');
 
         $timestamp = $request->header('x-cofinance-timestamp')

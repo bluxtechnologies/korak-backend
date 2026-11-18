@@ -93,6 +93,7 @@ it('completes the full authentication lifecycle (register -> login -> me -> logo
     $registerResponse = $this->postJson('/api/v1/auth/register', [
         'username' => 'lifecycle_user',
         'email' => 'lifecycle@example.com',
+        'phone_number' => '+2348055667788',
         'password' => 'LifecyclePassword123!',
         'password_confirmation' => 'LifecyclePassword123!',
     ]);

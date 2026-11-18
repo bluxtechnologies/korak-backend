@@ -23,13 +23,28 @@ class RegisterRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'name' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:120',
+            ],
             'username' => [
-                'required',
+                'sometimes',
+                'nullable',
                 'string',
                 'min:3',
                 'max:30',
                 'regex:/^[a-zA-Z0-9_.-]+$/',
                 'unique:customers,username',
+            ],
+            'phone_number' => [
+                'required',
+                'string',
+                'min:7',
+                'max:20',
+                'regex:/^[0-9+\s\-().]+$/',
+                'unique:customers,phone_number',
             ],
             'email' => [
                 'required',
@@ -44,6 +59,10 @@ class RegisterRequest extends FormRequest
                 Password::min(8),
                 'confirmed',
             ],
+            'terms' => [
+                'sometimes',
+                'boolean',
+            ],
         ];
     }
 
@@ -56,6 +75,8 @@ class RegisterRequest extends FormRequest
     {
         return [
             'username.regex' => 'The username may only contain letters, numbers, dashes, underscores, and periods.',
+            'phone_number.regex' => 'The phone number format is invalid.',
+            'phone_number.unique' => 'The phone number has already been taken.',
         ];
     }
 }

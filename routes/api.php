@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Admin\AdminSupportTicketController;
 use App\Http\Controllers\Api\V1\Auth\ForgotPasswordController;
 use App\Http\Controllers\Api\V1\Auth\LoginController;
 use App\Http\Controllers\Api\V1\Auth\LogoutController;
@@ -15,7 +16,9 @@ use App\Http\Controllers\Api\V1\Profile\ChangePasswordController;
 use App\Http\Controllers\Api\V1\Profile\ProfileController;
 use App\Http\Controllers\Api\V1\Profile\SecurityActivityController;
 use App\Http\Controllers\Api\V1\Profile\SessionController;
+use App\Http\Controllers\Api\V1\Support\SupportTicketController;
 use App\Http\Controllers\Api\V1\Wallet\FundingController;
+use App\Http\Controllers\Api\V1\Wallet\VirtualAccountController;
 use App\Http\Controllers\Api\V1\Wallet\WalletController;
 use App\Http\Controllers\Api\V1\Webhooks\FinityPayWebhookController;
 use Illuminate\Support\Facades\Route;
@@ -77,6 +80,8 @@ Route::prefix('v1')
                 Route::get('/', [WalletController::class, 'show'])->name('show');
                 Route::post('fund', [FundingController::class, 'initiate'])->name('fund');
                 Route::get('fund/{reference}', [FundingController::class, 'show'])->name('fund.show');
+                Route::get('dedicated-account', [VirtualAccountController::class, 'show'])->name('dedicated-account.show');
+                Route::post('dedicated-account', [VirtualAccountController::class, 'store'])->name('dedicated-account.store');
                 Route::get('transactions', [WalletController::class, 'transactions'])->name('transactions');
             });
 
@@ -99,9 +104,27 @@ Route::prefix('v1')
         Route::post('webhooks/cofinance', FinityPayWebhookController::class)->name('webhooks.cofinance');
         Route::post('webhooks/finitypay', FinityPayWebhookController::class)->name('webhooks.finitypay');
 
+        // Support Tickets (Customer)
+        Route::middleware('auth:customer')
+            ->prefix('support/tickets')
+            ->name('support.tickets.')
+            ->group(function (): void {
+                Route::get('/', [SupportTicketController::class, 'index'])->name('index');
+                Route::post('/', [SupportTicketController::class, 'store'])->name('store');
+                Route::get('{id}', [SupportTicketController::class, 'show'])->name('show');
+                Route::post('{id}/messages', [SupportTicketController::class, 'reply'])->name('messages.store');
+            });
+
         Route::prefix('admin')
             ->name('admin.')
             ->group(function (): void {
-                // Admin API v1 endpoints (Doc 06).
+                Route::prefix('support/tickets')
+                    ->name('support.tickets.')
+                    ->group(function (): void {
+                        Route::get('/', [AdminSupportTicketController::class, 'index'])->name('index');
+                        Route::get('{id}', [AdminSupportTicketController::class, 'show'])->name('show');
+                        Route::patch('{id}/status', [AdminSupportTicketController::class, 'updateStatus'])->name('update-status');
+                        Route::post('{id}/messages', [AdminSupportTicketController::class, 'reply'])->name('messages.store');
+                    });
             });
     });

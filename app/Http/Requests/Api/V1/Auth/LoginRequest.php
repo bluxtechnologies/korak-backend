@@ -22,21 +22,25 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'login' => ['required_without_all:email,username', 'nullable', 'string'],
-            'email' => ['required_without_all:login,username', 'nullable', 'string'],
-            'username' => ['required_without_all:login,email', 'nullable', 'string'],
+            'login' => ['required_without_all:email,username,phone_number,phone', 'nullable', 'string'],
+            'email' => ['required_without_all:login,username,phone_number,phone', 'nullable', 'string'],
+            'username' => ['required_without_all:login,email,phone_number,phone', 'nullable', 'string'],
+            'phone_number' => ['required_without_all:login,email,username,phone', 'nullable', 'string'],
+            'phone' => ['required_without_all:login,email,username,phone_number', 'nullable', 'string'],
             'password' => ['required', 'string'],
             'device_name' => ['nullable', 'string', 'max:255'],
         ];
     }
 
     /**
-     * Resolve the login identifier (username or email).
+     * Resolve the login identifier (phone_number, username, or email).
      */
     public function identifier(): string
     {
         return (string) ($this->input('login')
             ?? $this->input('email')
-            ?? $this->input('username'));
+            ?? $this->input('username')
+            ?? $this->input('phone_number')
+            ?? $this->input('phone'));
     }
 }
