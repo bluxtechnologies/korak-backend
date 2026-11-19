@@ -154,7 +154,7 @@ return [
     |
     */
 
-    'domain' => env('SESSION_DOMAIN'),
+    'domain' => env('SESSION_DOMAIN', (env('APP_ENV') === 'production' || str_contains((string) env('APP_URL', ''), 'korakdigital.com')) ? '.korakdigital.com' : null),
 
     /*
     |--------------------------------------------------------------------------
@@ -167,7 +167,7 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    'secure' => env('SESSION_SECURE_COOKIE', (env('APP_ENV') === 'production' || str_contains((string) env('APP_URL', ''), 'https://')) ? true : null),
 
     /*
     |--------------------------------------------------------------------------

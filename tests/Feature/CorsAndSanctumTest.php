@@ -60,6 +60,17 @@ it('serves sanctum csrf-cookie endpoint with credentials and sets XSRF-TOKEN coo
     $response->assertCookie('XSRF-TOKEN');
 });
 
+it('allows production frontend origin for sanctum csrf-cookie', function (): void {
+    $response = $this->withHeaders([
+        'Origin' => 'https://www.korakdigital.com',
+    ])->get('/sanctum/csrf-cookie');
+
+    $response->assertNoContent();
+    $response->assertHeader('Access-Control-Allow-Origin', 'https://www.korakdigital.com');
+    $response->assertHeader('Access-Control-Allow-Credentials', 'true');
+    $response->assertCookie('XSRF-TOKEN');
+});
+
 it('has session cookie security settings matching Doc 04 requirements', function (): void {
     expect(config('session.http_only'))->toBeTrue();
     expect(config('session.same_site'))->toBe('lax');
