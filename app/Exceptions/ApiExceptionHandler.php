@@ -145,6 +145,24 @@ final class ApiExceptionHandler
             'exception' => $e,
         ]);
 
+        if (str_contains($e->getMessage(), 'No application encryption key has been specified')) {
+            return ApiResponse::error(
+                message: 'Application encryption key is missing. Please run php artisan key:generate on the server.',
+                code: 'app_key_missing',
+                status: 500,
+                referenceId: $referenceId
+            );
+        }
+
+        if ($e instanceof \Illuminate\Database\QueryException && str_contains($e->getMessage(), "doesn't exist")) {
+            return ApiResponse::error(
+                message: 'Database tables are missing. Please run php artisan migrate --force on the server.',
+                code: 'pending_migrations',
+                status: 500,
+                referenceId: $referenceId
+            );
+        }
+
         return ApiResponse::error(
             message: 'An unexpected server error occurred.',
             code: 'server_error',

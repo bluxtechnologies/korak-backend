@@ -28,6 +28,34 @@ Route::prefix('v1')
     ->group(function (): void {
         Route::get('health', HealthController::class)->name('health');
 
+        Route::get('diagnostics', function () {
+            $hasSessions = false;
+            $hasCustomers = false;
+            $hasWallets = false;
+            try {
+                $hasSessions = \Illuminate\Support\Facades\Schema::hasTable('sessions');
+                $hasCustomers = \Illuminate\Support\Facades\Schema::hasTable('customers');
+                $hasWallets = \Illuminate\Support\Facades\Schema::hasTable('wallets');
+            } catch (\Throwable) {
+                // Ignore DB error for diagnostics check
+            }
+
+            return response()->json([
+                'status' => 'ok',
+                'app_key_set' => ! empty(config('app.key')),
+                'session_driver' => config('session.driver'),
+                'session_domain' => config('session.domain'),
+                'cors_origins' => config('cors.allowed_origins'),
+                'sanctum_stateful' => config('sanctum.stateful'),
+                'database' => [
+                    'sessions_table' => $hasSessions,
+                    'customers_table' => $hasCustomers,
+                    'wallets_table' => $hasWallets,
+                ],
+                'storage_sessions_writable' => is_writable(storage_path('framework/sessions')),
+            ]);
+        })->name('diagnostics');
+
         Route::prefix('auth')
             ->name('auth.')
             ->group(function (): void {

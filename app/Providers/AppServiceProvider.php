@@ -24,6 +24,18 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureRateLimiting();
+
+        // Safety fallback: if database session driver is configured but sessions table is not migrated yet,
+        // fall back to cookie sessions instead of crashing with a 500 error on web requests.
+        if (config('session.driver') === 'database' && ! app()->runningInConsole()) {
+            try {
+                if (! \Illuminate\Support\Facades\Schema::hasTable(config('session.table', 'sessions'))) {
+                    config(['session.driver' => 'cookie']);
+                }
+            } catch (\Throwable) {
+                config(['session.driver' => 'cookie']);
+            }
+        }
     }
 
     /**
