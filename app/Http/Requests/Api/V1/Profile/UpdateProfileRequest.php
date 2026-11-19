@@ -16,6 +16,29 @@ class UpdateProfileRequest extends FormRequest
     }
 
     /**
+     * Prepare the data for validation.
+     *
+     * Handles composite `name` (splitting into `first_name` and `last_name`)
+     * and ensures alias symmetry between `phone` and `phone_number`.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->filled('name') && ! $this->filled('first_name')) {
+            $parts = explode(' ', trim((string) $this->input('name')), 2);
+            $this->merge([
+                'first_name' => $parts[0] ?? null,
+                'last_name' => $parts[1] ?? null,
+            ]);
+        }
+
+        if ($this->filled('phone_number') && ! $this->filled('phone')) {
+            $this->merge(['phone' => $this->input('phone_number')]);
+        } elseif ($this->filled('phone') && ! $this->filled('phone_number')) {
+            $this->merge(['phone_number' => $this->input('phone')]);
+        }
+    }
+
+    /**
      * Get the validation rules that apply to the request.
      *
      * @return array<string, list<mixed>>
@@ -25,6 +48,12 @@ class UpdateProfileRequest extends FormRequest
         $customerId = $this->user('customer')?->getAuthIdentifier();
 
         return [
+            'name' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:120',
+            ],
             'username' => [
                 'sometimes',
                 'string',
@@ -46,6 +75,13 @@ class UpdateProfileRequest extends FormRequest
                 'max:60',
             ],
             'phone' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:20',
+                'regex:/^[0-9+\s\-()]+$/',
+            ],
+            'phone_number' => [
                 'sometimes',
                 'nullable',
                 'string',

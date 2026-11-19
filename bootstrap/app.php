@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(EnsureRequestId::class);
         $middleware->statefulApi();
         $middleware->throttleApi();
+        $middleware->redirectGuestsTo(fn (Request $request) => null);
         $middleware->validateCsrfTokens(except: [
             'webhooks/*',
             'api/v1/webhooks/*',

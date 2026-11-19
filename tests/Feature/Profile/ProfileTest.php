@@ -472,3 +472,82 @@ it('lists customer recent security activity scoped strictly to the customer per 
     $response2->assertOk();
     expect($response2->json('meta.total'))->toBe(1);
 });
+
+it('updates customer profile using composite name and phone_number alias', function (): void {
+    $customer = Customer::factory()->create([
+        'username' => 'nwosu',
+        'first_name' => null,
+        'last_name' => null,
+        'phone' => null,
+    ]);
+
+    $response = $this->actingAs($customer, 'customer')
+        ->patchJson('/api/v1/profile', [
+            'name' => 'Amara Nwosu',
+            'phone_number' => '+2348011223344',
+        ]);
+
+    $response->assertOk()
+        ->assertJson([
+            'data' => [
+                'first_name' => 'Amara',
+                'last_name' => 'Nwosu',
+                'full_name' => 'Amara Nwosu',
+                'name' => 'Amara Nwosu',
+                'phone' => '+2348011223344',
+                'phone_number' => '+2348011223344',
+            ],
+        ]);
+
+    $fresh = $customer->fresh();
+    expect($fresh->first_name)->toBe('Amara')
+        ->and($fresh->last_name)->toBe('Nwosu')
+        ->and($fresh->phone)->toBe('+2348011223344');
+});
+
+it('returns 401 JSON for unauthenticated requests even without Accept json header', function (): void {
+    $response = $this->get('/api/v1/profile', [
+        'Accept' => 'text/html,application/xhtml+xml',
+    ]);
+
+    $response->assertStatus(401)
+        ->assertJson([
+            'message' => 'Unauthenticated.',
+            'code' => 'unauthenticated',
+        ]);
+});
+
+it('revokes other sessions without requiring current_password when already authenticated', function (): void {
+    $customer = Customer::factory()->create();
+
+    DB::table('sessions')->insert([
+        [
+            'id' => 'current_session_1',
+            'user_id' => $customer->id,
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'Current Browser',
+            'payload' => 'payload',
+            'last_activity' => time(),
+        ],
+        [
+            'id' => 'remote_session_2',
+            'user_id' => $customer->id,
+            'ip_address' => '102.89.44.1',
+            'user_agent' => 'Remote Mobile',
+            'payload' => 'payload',
+            'last_activity' => time(),
+        ],
+    ]);
+
+    $response = $this->actingAs($customer, 'customer')
+        ->deleteJson('/api/v1/profile/sessions/other');
+
+    $response->assertOk()
+        ->assertJson([
+            'data' => [
+                'message' => 'All other sessions have been signed out.',
+            ],
+        ]);
+
+    expect(DB::table('sessions')->where('id', 'remote_session_2')->exists())->toBeFalse();
+});

@@ -228,3 +228,40 @@ it('auto-credits wallet via webhook when payment arrives using account_number', 
 
     expect($wallet->fresh()->balance)->toBe(1000000); // ₦10,000.00
 });
+
+it('generates mock dedicated account when mock mode is enabled', function (): void {
+    config()->set('services.finitypay.mock', true);
+
+    $customer = Customer::factory()->create([
+        'username' => 'mockuser',
+        'first_name' => 'Mock',
+        'last_name' => 'Tester',
+        'phone' => '08099887766',
+    ]);
+
+    Http::fake();
+
+    $response = $this->actingAs($customer, 'customer')
+        ->postJson('/api/v1/wallet/dedicated-account');
+
+    $response->assertCreated()
+        ->assertJson([
+            'data' => [
+                'bank_name' => 'Wema Bank',
+                'account_name' => 'KORAK / MOCK TESTER',
+                'status' => 'active',
+            ],
+            'meta' => [
+                'has_account' => true,
+                'created' => true,
+            ],
+        ]);
+
+    Http::assertNothingSent();
+
+    $this->assertDatabaseHas('customer_virtual_accounts', [
+        'customer_id' => $customer->id,
+        'bank_name' => 'Wema Bank',
+        'provider' => 'mock_provider',
+    ]);
+});

@@ -56,6 +56,7 @@ class Customer extends Authenticatable
     protected $fillable = [
         'ulid',
         'username',
+        'name',
         'first_name',
         'last_name',
         'email',
@@ -138,6 +139,28 @@ class Customer extends Authenticatable
         if (empty($this->attributes['phone'])) {
             $this->attributes['phone'] = $value;
         }
+    }
+
+    /**
+     * Set the customer's composite name and synchronize first_name and last_name.
+     */
+    public function setNameAttribute(?string $value): void
+    {
+        if ($value !== null && trim($value) !== '') {
+            $parts = explode(' ', trim($value), 2);
+            $this->attributes['first_name'] = $parts[0] ?? null;
+            $this->attributes['last_name'] = $parts[1] ?? null;
+        }
+    }
+
+    /**
+     * Get the customer's full composite name or fallback to username.
+     */
+    public function getNameAttribute(): string
+    {
+        $fullName = trim("{$this->first_name} {$this->last_name}");
+
+        return $fullName !== '' ? $fullName : $this->username;
     }
 
     /**

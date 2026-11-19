@@ -7,6 +7,7 @@ use App\Models\CustomerDeviceChallenge;
 use App\Models\CustomerTrustedDevice;
 use App\Notifications\DeviceVerificationOtpNotification;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class DeviceVerificationService
@@ -74,11 +75,18 @@ class DeviceVerificationService
             'expires_at' => $expiresAt,
         ]);
 
-        $customer->notify(new DeviceVerificationOtpNotification(
-            code: $otp,
-            deviceName: $deviceName ?: 'Unknown Device',
-            ipAddress: $ipAddress,
-        ));
+        try {
+            $customer->notify(new DeviceVerificationOtpNotification(
+                code: $otp,
+                deviceName: $deviceName ?: 'Unknown Device',
+                ipAddress: $ipAddress,
+            ));
+        } catch (\Throwable $e) {
+            Log::error('Failed to dispatch DeviceVerificationOtpNotification: '.$e->getMessage(), [
+                'customer_id' => $customer->id,
+                'email' => $customer->email,
+            ]);
+        }
 
         return [
             'challenge_token' => $challengeToken,

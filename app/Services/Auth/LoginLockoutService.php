@@ -5,6 +5,7 @@ namespace App\Services\Auth;
 use App\Models\Customer;
 use App\Notifications\LockoutNotification;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class LoginLockoutService
 {
@@ -70,7 +71,13 @@ class LoginLockoutService
         Cache::put($this->lockoutKey($customer), true, now()->addMinutes($duration));
         Cache::forget($this->attemptsKey($customer));
 
-        $customer->notify(new LockoutNotification($duration));
+        try {
+            $customer->notify(new LockoutNotification($duration));
+        } catch (\Throwable $e) {
+            Log::error('Failed to dispatch LockoutNotification: '.$e->getMessage(), [
+                'customer_id' => $customer->id,
+            ]);
+        }
     }
 
     /**

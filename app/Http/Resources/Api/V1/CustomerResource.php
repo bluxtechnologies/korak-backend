@@ -21,6 +21,25 @@ class CustomerResource extends ApiResource
         $fullName = trim("{$this->resource->first_name} {$this->resource->last_name}");
         $displayName = $fullName !== '' ? $fullName : $this->resource->username;
 
+        $hasVirtualAccount = false;
+        $virtualAccountData = null;
+
+        try {
+            $va = $this->resource->virtualAccount;
+            if ($va) {
+                $hasVirtualAccount = true;
+                $virtualAccountData = [
+                    'bank_name' => $va->bank_name,
+                    'bank_code' => $va->bank_code,
+                    'account_number' => $va->account_number,
+                    'account_name' => $va->account_name,
+                ];
+            }
+        } catch (\Throwable) {
+            $hasVirtualAccount = false;
+            $virtualAccountData = null;
+        }
+
         return [
             'id' => $this->resource->ulid,
             'username' => $this->resource->username,
@@ -32,13 +51,8 @@ class CustomerResource extends ApiResource
             'phone' => $this->resource->phone,
             'phone_number' => $this->resource->phone_number ?? $this->resource->phone,
             'email_verified_at' => $this->resource->email_verified_at?->toIso8601String(),
-            'has_virtual_account' => $this->resource->virtualAccount !== null,
-            'virtual_account' => $this->resource->virtualAccount ? [
-                'bank_name' => $this->resource->virtualAccount->bank_name,
-                'bank_code' => $this->resource->virtualAccount->bank_code,
-                'account_number' => $this->resource->virtualAccount->account_number,
-                'account_name' => $this->resource->virtualAccount->account_name,
-            ] : null,
+            'has_virtual_account' => $hasVirtualAccount,
+            'virtual_account' => $virtualAccountData,
             'created_at' => $this->resource->created_at->toIso8601String(),
         ];
     }

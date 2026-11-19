@@ -23,7 +23,8 @@ class RevokeOtherSessionsRequest extends FormRequest
     {
         return [
             'current_password' => [
-                'required',
+                'sometimes',
+                'nullable',
                 'string',
                 'current_password:customer',
             ],

@@ -20,7 +20,7 @@ class SupportTicketMessageResource extends JsonResource
     {
         return [
             'id' => $this->resource->ulid,
-            'ticket_id' => $this->resource->ticket?->ulid ?? (string) $this->resource->ticket_id,
+            'ticket_id' => $this->resource->ticket->ulid,
             'author' => $this->resource->author_type,
             'author_name' => $this->resource->author_name,
             'body' => $this->resource->body,

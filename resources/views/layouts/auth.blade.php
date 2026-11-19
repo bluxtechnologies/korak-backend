@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="utf-8" />
-    <title> {{ $title }} - {{ config('app.name') }}</title>
+    <title> {{ $title }} - Korak Backend</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta content="KorakDigital Solutions" name="description" />
     <meta content="KorakDigitals" name="author" />
@@ -43,6 +43,7 @@
     </div>
 
 
+    <script src="{{ asset('admin/assets/js/jquery.min.js') }}"></script>
 
     <!-- Vendor js -->
     <script src="{{ asset('admin/assets/js/vendor.min.js') }}"></script>

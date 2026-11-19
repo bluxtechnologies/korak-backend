@@ -70,4 +70,19 @@ if (app()->environment('local')) {
 
 Route::prefix('admininistator')->group(function (): void {
     Route::get('login', [AdminAuthController::class, 'login'])->name('admin.login');
+    Route::get('forgot-password', [AdminAuthController::class, 'forgotPassword'])->name('admin.forgot-password');
+
+    Route::post('login', [AdminAuthController::class, 'login'])->name('admin.login');
+    Route::post('forgot-password', [AdminAuthController::class, 'forgotPassword'])->name('admin.forgot-password');
+    Route::post('reset-password', [AdminAuthController::class, 'resetPassword'])->name('admin.reset-password');
+    Route::post('logout', [AdminAuthController::class, 'logout'])->name('admin.logout');
+    Route::post('change-password', [AdminAuthController::class, 'changePassword'])->name('admin.change-password');
+    Route::post('profile', [AdminAuthController::class, 'profile'])->name('admin.profile');
+    Route::post('update-profile', [AdminAuthController::class, 'updateProfile'])->name('admin.update-profile');
+    Route::post('update-password', [AdminAuthController::class, 'updatePassword'])->name('admin.update-password');
+    Route::post('update-profile-picture', [AdminAuthController::class, 'updateProfilePicture'])->name('admin.update-profile-picture');
+
+    Route::group(['middleware' => 'auth:admin'], function (): void {
+        Route::get('dashboard', [AdminDashboardController::class, 'dashboard'])->name('admin.dashboard');
+    });
 });

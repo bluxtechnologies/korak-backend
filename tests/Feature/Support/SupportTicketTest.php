@@ -4,7 +4,6 @@ use App\Enums\TicketCategory;
 use App\Enums\TicketStatus;
 use App\Models\Customer;
 use App\Models\SupportTicket;
-use App\Models\SupportTicketMessage;
 use App\Notifications\SupportTicketReplyNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;

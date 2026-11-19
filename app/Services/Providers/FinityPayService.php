@@ -16,6 +16,7 @@ use Exception;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class FinityPayService
 {
@@ -31,7 +32,7 @@ class FinityPayService
      */
     public function getBaseUrl(): string
     {
-        return rtrim((string) config('services.finitypay.base_url', 'https://api.cofinance.ng/v1'), '/');
+        return rtrim((string) config('services.finitypay.base_url', 'https://api.finitypay.com.ng/v1'), '/');
     }
 
     /**
@@ -438,6 +439,24 @@ class FinityPayService
      */
     public function createCustomer(Customer $customer, ?string $phone = null): array
     {
+        $customerPhone = $phone ?: $customer->phone ?: '08000000000';
+        $fullName = trim("{$customer->first_name} {$customer->last_name}") ?: $customer->username;
+
+        if (config('services.finitypay.mock', false)) {
+            $mockCustomerId = 'mock_cust_'.Str::random(12);
+            $customer->update(['provider_customer_id' => $mockCustomerId]);
+
+            return [
+                'status' => 'success',
+                'data' => [
+                    'id' => $mockCustomerId,
+                    'name' => $fullName,
+                    'email' => $customer->email,
+                    'phone' => $customerPhone,
+                ],
+            ];
+        }
+
         $secretKey = $this->getSecretKey();
         $baseUrl = $this->getBaseUrl();
 
@@ -447,9 +466,6 @@ class FinityPayService
                 'message' => 'Payment gateway credentials are not configured.',
             ];
         }
-
-        $customerPhone = $phone ?: $customer->phone ?: '08000000000';
-        $fullName = trim("{$customer->first_name} {$customer->last_name}") ?: $customer->username;
 
         $payload = [
             'name' => $fullName,
@@ -463,6 +479,7 @@ class FinityPayService
 
             /** @var Response $response */
             $response = Http::timeout($timeout)
+                ->connectTimeout(15)
                 ->withHeaders($headers)
                 ->post($baseUrl.'/customers', $payload);
 
@@ -483,6 +500,11 @@ class FinityPayService
                 ];
             }
 
+            Log::warning('FinityPay createCustomer rejected by provider', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
             return [
                 'status' => 'error',
                 'message' => $response->json('message') ?? 'Failed to register customer with payment provider.',
@@ -492,7 +514,7 @@ class FinityPayService
 
             return [
                 'status' => 'error',
-                'message' => 'Could not connect to payment provider.',
+                'message' => 'Could not connect to payment provider: '.$e->getMessage(),
             ];
         }
     }
@@ -525,6 +547,41 @@ class FinityPayService
             ];
         }
 
+        $fullName = trim("{$customer->first_name} {$customer->last_name}") ?: $customer->username;
+        $customerPhone = $phone ?: $customer->phone ?: '08000000000';
+
+        // Local development / mock mode support
+        if (config('services.finitypay.mock', false)) {
+            $mockAccountNumber = '99'.str_pad((string) $customer->id, 8, '0', STR_PAD_LEFT);
+            /** @var CustomerVirtualAccount $account */
+            $account = CustomerVirtualAccount::create([
+                'customer_id' => $customer->id,
+                'wallet_id' => $wallet->id,
+                'provider' => 'mock_provider',
+                'provider_account_id' => 'mock_'.Str::random(12),
+                'account_reference' => 'va_mock_'.Str::random(10),
+                'bank_name' => 'Wema Bank',
+                'bank_code' => '035',
+                'account_number' => $mockAccountNumber,
+                'account_name' => 'KORAK / '.strtoupper($fullName),
+                'status' => 'active',
+                'metadata' => ['mock' => true],
+            ]);
+
+            return [
+                'status' => 'success',
+                'data' => [
+                    'id' => $account->ulid,
+                    'bank_name' => $account->bank_name,
+                    'bank_code' => $account->bank_code,
+                    'account_number' => $account->account_number,
+                    'account_name' => $account->account_name,
+                    'account_reference' => $account->account_reference,
+                    'status' => $account->status,
+                ],
+            ];
+        }
+
         $secretKey = $this->getSecretKey();
         $baseUrl = $this->getBaseUrl();
 
@@ -543,9 +600,6 @@ class FinityPayService
             }
         }
 
-        $customerPhone = $phone ?: $customer->phone ?: '08000000000';
-        $fullName = trim("{$customer->first_name} {$customer->last_name}") ?: $customer->username;
-
         $payload = [
             'customer_id' => $customer->provider_customer_id,
             'customer_email' => $customer->email,
@@ -555,10 +609,11 @@ class FinityPayService
 
         try {
             $headers = $this->buildHeaders();
-            $timeout = (int) config('services.finitypay.timeout', 25);
+            $timeout = (int) config('services.finitypay.timeout', 30);
 
             /** @var Response $response */
             $response = Http::timeout($timeout)
+                ->connectTimeout(15)
                 ->withHeaders($headers)
                 ->post($baseUrl.'/virtual-accounts', $payload);
 
@@ -567,6 +622,14 @@ class FinityPayService
                 $body = $response->json() ?? [];
                 /** @var array<string, mixed> $data */
                 $data = isset($body['data']) && is_array($body['data']) ? $body['data'] : $body;
+                $bankAccount = isset($data['bank_account']) && is_array($data['bank_account']) ? $data['bank_account'] : [];
+
+                $bankName = (string) ($bankAccount['bank_name'] ?? $data['bank_name'] ?? 'Wema Bank');
+                $bankCode = isset($bankAccount['bank_code']) ? (string) $bankAccount['bank_code'] : (isset($data['bank_code']) ? (string) $data['bank_code'] : null);
+                $accountNumber = (string) ($bankAccount['account_number'] ?? $data['account_number'] ?? '');
+                $accountName = (string) ($bankAccount['account_name'] ?? $data['account_name'] ?? "KORAK / {$fullName}");
+                $accountRef = (string) ($data['reference'] ?? $bankAccount['reference'] ?? ('va_'.uniqid()));
+                $status = (string) ($bankAccount['status'] ?? $data['status'] ?? 'active');
 
                 /** @var CustomerVirtualAccount $account */
                 $account = CustomerVirtualAccount::create([
@@ -574,12 +637,12 @@ class FinityPayService
                     'wallet_id' => $wallet->id,
                     'provider' => 'finitypay',
                     'provider_account_id' => isset($data['id']) ? (string) $data['id'] : (isset($data['account_id']) ? (string) $data['account_id'] : null),
-                    'account_reference' => (string) ($data['reference'] ?? 'va_'.uniqid()),
-                    'bank_name' => (string) ($data['bank_name'] ?? 'Wema Bank'),
-                    'bank_code' => isset($data['bank_code']) ? (string) $data['bank_code'] : null,
-                    'account_number' => (string) ($data['account_number'] ?? ''),
-                    'account_name' => (string) ($data['account_name'] ?? "COFINANCE / {$fullName}"),
-                    'status' => 'active',
+                    'account_reference' => $accountRef,
+                    'bank_name' => $bankName,
+                    'bank_code' => $bankCode,
+                    'account_number' => $accountNumber,
+                    'account_name' => $accountName,
+                    'status' => $status === 'active' ? 'active' : $status,
                     'metadata' => $data,
                 ]);
 
@@ -597,6 +660,11 @@ class FinityPayService
                 ];
             }
 
+            Log::warning('FinityPay createVirtualAccount rejected by provider', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
             return [
                 'status' => 'error',
                 'message' => $response->json('message') ?? 'Failed to generate dedicated virtual account.',
@@ -606,7 +674,7 @@ class FinityPayService
 
             return [
                 'status' => 'error',
-                'message' => 'Could not connect to payment provider.',
+                'message' => 'Could not connect to payment provider: '.$e->getMessage(),
             ];
         }
     }
@@ -776,6 +844,28 @@ class FinityPayService
 
         // Check if top-level event indicates failure
         $gatewayStatus = strtolower((string) ($payload['gateway_status'] ?? $payload['status'] ?? ''));
+
+        // =====================================================================
+        // Handle Customer Events (customer.created, customer.updated)
+        // =====================================================================
+        if ($eventType === 'customer.created' || $eventType === 'customer.updated') {
+            /** @var array<string, mixed> $data */
+            $data = isset($payload['data']) && is_array($payload['data']) ? $payload['data'] : [];
+            $providerCustomerId = (string) ($data['id'] ?? $data['uuid'] ?? '');
+            $email = (string) ($data['email'] ?? '');
+            if ($providerCustomerId !== '' && $email !== '') {
+                Customer::where('email', $email)
+                    ->whereNull('provider_customer_id')
+                    ->update(['provider_customer_id' => $providerCustomerId]);
+            }
+
+            $event->update([
+                'status' => 'processed',
+                'processed_at' => now(),
+            ]);
+
+            return true;
+        }
 
         // =====================================================================
         // Handle Bill Payment Events (bill.successful, bill.failed, bill.pending)

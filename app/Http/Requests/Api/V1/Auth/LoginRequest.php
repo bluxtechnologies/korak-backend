@@ -15,6 +15,16 @@ class LoginRequest extends FormRequest
     }
 
     /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->filled('identifier') && ! $this->filled('login') && ! $this->filled('email') && ! $this->filled('username')) {
+            $this->merge(['login' => $this->input('identifier')]);
+        }
+    }
+
+    /**
      * Get the validation rules that apply to the request.
      *
      * @return array<string, list<string>>
@@ -22,11 +32,12 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'login' => ['required_without_all:email,username,phone_number,phone', 'nullable', 'string'],
-            'email' => ['required_without_all:login,username,phone_number,phone', 'nullable', 'string'],
-            'username' => ['required_without_all:login,email,phone_number,phone', 'nullable', 'string'],
-            'phone_number' => ['required_without_all:login,email,username,phone', 'nullable', 'string'],
-            'phone' => ['required_without_all:login,email,username,phone_number', 'nullable', 'string'],
+            'identifier' => ['sometimes', 'nullable', 'string'],
+            'login' => ['required_without_all:email,username,phone_number,phone,identifier', 'nullable', 'string'],
+            'email' => ['required_without_all:login,username,phone_number,phone,identifier', 'nullable', 'string'],
+            'username' => ['required_without_all:login,email,phone_number,phone,identifier', 'nullable', 'string'],
+            'phone_number' => ['required_without_all:login,email,username,phone,identifier', 'nullable', 'string'],
+            'phone' => ['required_without_all:login,email,username,phone_number,identifier', 'nullable', 'string'],
             'password' => ['required', 'string'],
             'device_name' => ['nullable', 'string', 'max:255'],
         ];
@@ -38,6 +49,7 @@ class LoginRequest extends FormRequest
     public function identifier(): string
     {
         return (string) ($this->input('login')
+            ?? $this->input('identifier')
             ?? $this->input('email')
             ?? $this->input('username')
             ?? $this->input('phone_number')

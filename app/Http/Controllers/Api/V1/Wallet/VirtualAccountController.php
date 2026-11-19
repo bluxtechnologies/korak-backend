@@ -12,6 +12,7 @@ use App\Services\Providers\FinityPayService;
 use App\Services\Wallet\WalletService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class VirtualAccountController extends Controller
 {
@@ -104,6 +105,11 @@ class VirtualAccountController extends Controller
         );
 
         if ($result['status'] !== 'success') {
+            Log::warning('Dedicated virtual account generation failed', [
+                'customer_id' => $customer->id,
+                'error' => $result['message'] ?? null,
+            ]);
+
             return ApiResponse::error(
                 message: $result['message'] ?? 'Unable to generate dedicated bank account at this time.',
                 code: 'dedicated_account_generation_failed',
