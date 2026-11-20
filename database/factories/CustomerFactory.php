@@ -38,8 +38,19 @@ class CustomerFactory extends Factory
             'phone' => fake()->e164PhoneNumber(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
+            'device_verification_enabled' => false,
             'remember_token' => Str::random(10),
         ];
+    }
+
+    /**
+     * Indicate that the customer has device verification enabled.
+     */
+    public function withDeviceVerification(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'device_verification_enabled' => true,
+        ]);
     }
 
     /**

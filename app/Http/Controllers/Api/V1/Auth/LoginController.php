@@ -125,7 +125,10 @@ final class LoginController extends Controller
 
         $deviceName = (string) ($request->input('device_name') ?: $request->userAgent() ?: 'Unknown Device');
 
-        if (config('auth.device_verification_enabled', true) && ! $this->deviceService->isTrustedDevice($customer, $deviceToken)) {
+        $requiresDeviceVerification = config('auth.device_verification_enabled', true)
+            && (bool) ($customer->device_verification_enabled ?? false);
+
+        if ($requiresDeviceVerification && ! $this->deviceService->isTrustedDevice($customer, $deviceToken)) {
             $challenge = $this->deviceService->createChallenge(
                 customer: $customer,
                 deviceName: $deviceName,

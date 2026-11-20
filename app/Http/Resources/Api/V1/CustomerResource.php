@@ -51,6 +51,7 @@ class CustomerResource extends ApiResource
             'phone' => $this->resource->phone,
             'phone_number' => $this->resource->phone_number ?? $this->resource->phone,
             'email_verified_at' => $this->resource->email_verified_at?->toIso8601String(),
+            'device_verification_enabled' => (bool) ($this->resource->device_verification_enabled ?? false),
             'has_virtual_account' => $hasVirtualAccount,
             'virtual_account' => $virtualAccountData,
             'created_at' => $this->resource->created_at->toIso8601String(),

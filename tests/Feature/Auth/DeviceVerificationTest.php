@@ -23,7 +23,7 @@ beforeEach(function (): void {
 it('detects unrecognised device on login and requires OTP verification per Doc 08 §4 and Doc 22 B7.2', function (): void {
     Notification::fake();
 
-    $customer = Customer::factory()->create([
+    $customer = Customer::factory()->withDeviceVerification()->create([
         'username' => 'device_user',
         'email' => 'device@example.com',
         'password' => 'Password123!',
@@ -64,7 +64,7 @@ it('detects unrecognised device on login and requires OTP verification per Doc 0
 });
 
 it('prevents unrecognised device from reaching protected endpoints until verified', function (): void {
-    $customer = Customer::factory()->create([
+    $customer = Customer::factory()->withDeviceVerification()->create([
         'email' => 'unverified@example.com',
         'password' => 'Password123!',
     ]);
@@ -85,7 +85,7 @@ it('prevents unrecognised device from reaching protected endpoints until verifie
 it('verifies OTP code and authenticates customer session per Doc 22 B7.4', function (): void {
     Notification::fake();
 
-    $customer = Customer::factory()->create([
+    $customer = Customer::factory()->withDeviceVerification()->create([
         'email' => 'verify_success@example.com',
         'password' => 'Password123!',
     ]);
@@ -147,7 +147,7 @@ it('verifies OTP code and authenticates customer session per Doc 22 B7.4', funct
 it('remembers device when remember_device is true and bypasses OTP on next login', function (): void {
     Notification::fake();
 
-    $customer = Customer::factory()->create([
+    $customer = Customer::factory()->withDeviceVerification()->create([
         'email' => 'remember_me@example.com',
         'password' => 'Password123!',
     ]);
@@ -214,7 +214,7 @@ it('remembers device when remember_device is true and bypasses OTP on next login
 it('rejects invalid OTP code and locks challenge after 3 attempts per Doc 08 §4', function (): void {
     Notification::fake();
 
-    $customer = Customer::factory()->create([
+    $customer = Customer::factory()->withDeviceVerification()->create([
         'email' => 'failed_otp@example.com',
         'password' => 'Password123!',
     ]);
@@ -264,7 +264,7 @@ it('rejects invalid OTP code and locks challenge after 3 attempts per Doc 08 §4
 it('rejects expired OTP challenge per Doc 08 §4', function (): void {
     Notification::fake();
 
-    $customer = Customer::factory()->create([
+    $customer = Customer::factory()->withDeviceVerification()->create([
         'email' => 'expired_otp@example.com',
         'password' => 'Password123!',
     ]);
@@ -402,4 +402,257 @@ it('revokes all trusted devices for authenticated customer per Doc 22 B7.5', fun
 it('confirms DeviceVerificationOtpNotification implements ShouldQueue per Doc 11', function (): void {
     $implements = class_implements(DeviceVerificationOtpNotification::class);
     expect($implements)->toHaveKey(ShouldQueue::class);
+});
+
+it('does not require device verification for newly registered customers by default', function (): void {
+    Notification::fake();
+
+    // 1. Register a new user
+    $registerResponse = $this->postJson('/api/v1/auth/register', [
+        'name' => 'First Time User',
+        'email' => 'firsttime@example.com',
+        'phone_number' => '+2348099887766',
+        'password' => 'Password123!',
+        'password_confirmation' => 'Password123!',
+    ]);
+
+    $registerResponse->assertStatus(201);
+    expect($registerResponse->json('data.device_verification_enabled'))->toBeFalse();
+
+    // 2. Immediate login succeeds directly without device challenge
+    $loginResponse = $this->postJson('/api/v1/auth/login', [
+        'identifier' => 'firsttime@example.com',
+        'password' => 'Password123!',
+    ]);
+
+    $loginResponse->assertOk()
+        ->assertJson([
+            'data' => [
+                'email' => 'firsttime@example.com',
+                'device_verification_enabled' => false,
+            ],
+        ]);
+
+    expect(Auth::guard('customer')->check())->toBeTrue();
+    Notification::assertNothingSent();
+});
+
+it('allows customer to toggle device verification in profile settings', function (): void {
+    $customer = Customer::factory()->create([
+        'device_verification_enabled' => false,
+    ]);
+
+    // 1. Turn on device verification in profile settings
+    $this->actingAs($customer, 'customer')
+        ->patchJson('/api/v1/profile', [
+            'device_verification_enabled' => true,
+        ])
+        ->assertOk()
+        ->assertJson([
+            'data' => [
+                'device_verification_enabled' => true,
+            ],
+        ]);
+
+    expect($customer->fresh()->device_verification_enabled)->toBeTrue();
+
+    // 2. Turn off device verification in profile settings
+    $this->actingAs($customer, 'customer')
+        ->patchJson('/api/v1/profile', [
+            'device_verification_enabled' => false,
+        ])
+        ->assertOk()
+        ->assertJson([
+            'data' => [
+                'device_verification_enabled' => false,
+            ],
+        ]);
+
+    expect($customer->fresh()->device_verification_enabled)->toBeFalse();
+});
+
+it('resends device verification OTP code successfully with challenge_token', function (): void {
+    Notification::fake();
+
+    $customer = Customer::factory()->create([
+        'email' => 'resend_test@example.com',
+        'password' => 'Password123!',
+        'device_verification_enabled' => true,
+    ]);
+
+    $loginResponse = $this->postJson('/api/v1/auth/login', [
+        'login' => 'resend_test@example.com',
+        'password' => 'Password123!',
+        'device_name' => 'Firefox on Linux',
+    ])->assertOk();
+
+    $challengeToken = $loginResponse->json('data.challenge_token');
+    expect($challengeToken)->not->toBeNull();
+
+    $challenge = CustomerDeviceChallenge::where('challenge_token', $challengeToken)->first();
+    $oldOtpHash = $challenge->otp_hash;
+
+    // Resend OTP via POST /api/v1/auth/verify-device/resend
+    $resendResponse = $this->postJson('/api/v1/auth/verify-device/resend', [
+        'challenge_token' => $challengeToken,
+    ]);
+
+    $resendResponse->assertOk()
+        ->assertJsonStructure([
+            'data' => [
+                'status',
+                'requires_device_verification',
+                'message',
+                'challenge_token',
+                'expires_at',
+            ],
+            'meta',
+        ])
+        ->assertJson([
+            'data' => [
+                'status' => 'device_verification_required',
+                'requires_device_verification' => true,
+                'message' => 'Verification code resent successfully.',
+                'challenge_token' => $challengeToken,
+            ],
+        ]);
+
+    // Challenge OTP hash must be updated
+    $freshChallenge = $challenge->fresh();
+    expect($freshChallenge->otp_hash)->not->toBe($oldOtpHash);
+    expect($freshChallenge->attempts)->toBe(0);
+
+    // Notification must be dispatched
+    Notification::assertSentTo(
+        $customer,
+        DeviceVerificationOtpNotification::class,
+        function (DeviceVerificationOtpNotification $notification): bool {
+            return strlen($notification->code) === 6;
+        }
+    );
+});
+
+it('resends device verification OTP code using alias routes', function (string $route): void {
+    Notification::fake();
+
+    $customer = Customer::factory()->create([
+        'email' => 'alias_test@example.com',
+        'password' => 'Password123!',
+        'device_verification_enabled' => true,
+    ]);
+
+    $loginResponse = $this->postJson('/api/v1/auth/login', [
+        'login' => 'alias_test@example.com',
+        'password' => 'Password123!',
+    ])->assertOk();
+
+    $challengeToken = $loginResponse->json('data.challenge_token');
+
+    $response = $this->postJson($route, [
+        'challenge_token' => $challengeToken,
+    ]);
+
+    $response->assertOk()
+        ->assertJson([
+            'data' => [
+                'requires_device_verification' => true,
+                'message' => 'Verification code resent successfully.',
+            ],
+        ]);
+})->with([
+    '/api/v1/auth/verify-device/resend',
+    '/api/v1/auth/resend-device-code',
+    '/api/v1/auth/resend-otp',
+]);
+
+it('resends device verification OTP code using customer identifier if challenge token is missing or expired', function (): void {
+    Notification::fake();
+
+    $customer = Customer::factory()->create([
+        'email' => 'ident_resend@example.com',
+        'phone_number' => '+2348011223344',
+        'password' => 'Password123!',
+        'device_verification_enabled' => true,
+    ]);
+
+    $resendResponse = $this->postJson('/api/v1/auth/verify-device/resend', [
+        'email' => 'ident_resend@example.com',
+    ]);
+
+    $resendResponse->assertOk()
+        ->assertJsonStructure([
+            'data' => [
+                'challenge_token',
+                'expires_at',
+            ],
+        ]);
+
+    expect(CustomerDeviceChallenge::where('customer_id', $customer->id)->exists())->toBeTrue();
+    Notification::assertSentTo($customer, DeviceVerificationOtpNotification::class);
+});
+
+it('rejects resend if challenge token is invalid and no valid customer identifier provided', function (): void {
+    $response = $this->postJson('/api/v1/auth/verify-device/resend', [
+        'challenge_token' => 'non_existent_token_12345678901234567890',
+    ]);
+
+    $response->assertStatus(400)
+        ->assertJson([
+            'code' => 'invalid_or_expired_challenge',
+        ]);
+});
+
+it('rejects resend if challenge token is expired and cleans up DB', function (): void {
+    $customer = Customer::factory()->create();
+
+    $challenge = CustomerDeviceChallenge::create([
+        'customer_id' => $customer->id,
+        'challenge_token' => 'expired_challenge_token_12345',
+        'otp_hash' => hash('sha256', '123456'),
+        'attempts' => 0,
+        'expires_at' => Carbon::now()->subMinutes(5),
+    ]);
+
+    $response = $this->postJson('/api/v1/auth/verify-device/resend', [
+        'challenge_token' => 'expired_challenge_token_12345',
+    ]);
+
+    $response->assertStatus(400)
+        ->assertJson([
+            'code' => 'invalid_or_expired_challenge',
+        ]);
+
+    expect(CustomerDeviceChallenge::where('id', $challenge->id)->exists())->toBeFalse();
+});
+
+it('throttles excessive device verification resend attempts', function (): void {
+    RateLimiter::clear('otp');
+
+    $customer = Customer::factory()->create([
+        'email' => 'throttle_resend@example.com',
+        'password' => 'Password123!',
+        'device_verification_enabled' => true,
+    ]);
+
+    $loginResponse = $this->postJson('/api/v1/auth/login', [
+        'login' => 'throttle_resend@example.com',
+        'password' => 'Password123!',
+    ])->assertOk();
+
+    $challengeToken = $loginResponse->json('data.challenge_token');
+
+    // 3 allowed per minute
+    for ($i = 0; $i < 3; $i++) {
+        $this->postJson('/api/v1/auth/verify-device/resend', [
+            'challenge_token' => $challengeToken,
+        ])->assertOk();
+    }
+
+    // 4th is throttled
+    $this->postJson('/api/v1/auth/verify-device/resend', [
+        'challenge_token' => $challengeToken,
+    ])->assertStatus(429)
+        ->assertJson([
+            'code' => 'too_many_requests',
+        ]);
 });

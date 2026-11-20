@@ -6,6 +6,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -18,7 +19,20 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(EnsureRequestId::class);
         $middleware->statefulApi();
         $middleware->throttleApi();
-        $middleware->redirectGuestsTo(fn (Request $request) => null);
+        $middleware->redirectGuestsTo(function (Request $request): ?string {
+            if ($request->is('admininistator/*') || $request->is('admininistator')) {
+                return route('admin.login');
+            }
+
+            return null;
+        });
+        $middleware->redirectUsersTo(function (Request $request): string {
+            if (Auth::guard('admin')->check()) {
+                return route('admin.dashboard');
+            }
+
+            return '/';
+        });
         $middleware->validateCsrfTokens(except: [
             'webhooks/*',
             'api/v1/webhooks/*',

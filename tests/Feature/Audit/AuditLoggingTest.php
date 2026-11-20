@@ -111,7 +111,7 @@ it('records auth.lockout event when customer account is locked after 5 failures 
 it('records device events during unrecognised device challenge and verification per Doc 12 §2', function (): void {
     Notification::fake();
 
-    $customer = Customer::factory()->create([
+    $customer = Customer::factory()->withDeviceVerification()->create([
         'email' => 'device_audit@example.com',
         'password' => 'Password123!',
     ]);

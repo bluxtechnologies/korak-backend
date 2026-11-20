@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\AdminRole;
 use App\Models\Concerns\HasPublicUlid;
+use App\Notifications\AdminResetPasswordNotification;
 use Carbon\Carbon;
 use Database\Factories\AdminFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -76,5 +77,15 @@ class Admin extends Authenticatable
             'role' => AdminRole::class,
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * Send the password reset notification.
+     *
+     * @param  string  $token
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new AdminResetPasswordNotification($token));
     }
 }

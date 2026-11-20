@@ -25,6 +25,7 @@ use Illuminate\Notifications\Notifiable;
  * @property string|null $provider_customer_id
  * @property Carbon|null $email_verified_at
  * @property string $password
+ * @property bool $device_verification_enabled
  * @property string|null $remember_token
  * @property Carbon $created_at
  * @property Carbon $updated_at
@@ -65,6 +66,7 @@ class Customer extends Authenticatable
         'provider_customer_id',
         'email_verified_at',
         'password',
+        'device_verification_enabled',
     ];
 
     /**
@@ -87,6 +89,7 @@ class Customer extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'device_verification_enabled' => 'boolean',
         ];
     }
 
@@ -148,7 +151,7 @@ class Customer extends Authenticatable
     {
         if ($value !== null && trim($value) !== '') {
             $parts = explode(' ', trim($value), 2);
-            $this->attributes['first_name'] = $parts[0] ?? null;
+            $this->attributes['first_name'] = $parts[0];
             $this->attributes['last_name'] = $parts[1] ?? null;
         }
     }

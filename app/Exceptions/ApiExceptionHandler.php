@@ -6,6 +6,7 @@ use App\Http\Responses\ApiResponse;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -154,7 +155,7 @@ final class ApiExceptionHandler
             );
         }
 
-        if ($e instanceof \Illuminate\Database\QueryException && str_contains($e->getMessage(), "doesn't exist")) {
+        if ($e instanceof QueryException && str_contains($e->getMessage(), "doesn't exist")) {
             return ApiResponse::error(
                 message: 'Database tables are missing. Please run php artisan migrate --force on the server.',
                 code: 'pending_migrations',

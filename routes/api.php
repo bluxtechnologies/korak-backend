@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\Auth\LoginController;
 use App\Http\Controllers\Api\V1\Auth\LogoutController;
 use App\Http\Controllers\Api\V1\Auth\MeController;
 use App\Http\Controllers\Api\V1\Auth\RegisterController;
+use App\Http\Controllers\Api\V1\Auth\ResendDeviceCodeController;
 use App\Http\Controllers\Api\V1\Auth\ResetPasswordController;
 use App\Http\Controllers\Api\V1\Auth\TrustedDeviceController;
 use App\Http\Controllers\Api\V1\Auth\VerifyDeviceController;
@@ -22,6 +23,7 @@ use App\Http\Controllers\Api\V1\Wallet\VirtualAccountController;
 use App\Http\Controllers\Api\V1\Wallet\WalletController;
 use App\Http\Controllers\Api\V1\Webhooks\FinityPayWebhookController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 
 Route::prefix('v1')
     ->name('api.v1.')
@@ -33,10 +35,10 @@ Route::prefix('v1')
             $hasCustomers = false;
             $hasWallets = false;
             try {
-                $hasSessions = \Illuminate\Support\Facades\Schema::hasTable('sessions');
-                $hasCustomers = \Illuminate\Support\Facades\Schema::hasTable('customers');
-                $hasWallets = \Illuminate\Support\Facades\Schema::hasTable('wallets');
-            } catch (\Throwable) {
+                $hasSessions = Schema::hasTable('sessions');
+                $hasCustomers = Schema::hasTable('customers');
+                $hasWallets = Schema::hasTable('wallets');
+            } catch (Throwable) {
                 // Ignore DB error for diagnostics check
             }
 
@@ -62,6 +64,11 @@ Route::prefix('v1')
                 Route::post('register', RegisterController::class)->name('register');
                 Route::post('login', LoginController::class)->middleware('throttle:login')->name('login');
                 Route::post('verify-device', VerifyDeviceController::class)->middleware('throttle:otp')->name('verify-device');
+                Route::match(['GET', 'POST'], 'verify-device/resend', ResendDeviceCodeController::class)->middleware('throttle:otp')->name('verify-device.resend');
+                Route::match(['GET', 'POST'], 'resend-device-code', ResendDeviceCodeController::class)->middleware('throttle:otp')->name('resend-device-code');
+                Route::match(['GET', 'POST'], 'resend-otp', ResendDeviceCodeController::class)->middleware('throttle:otp')->name('resend-otp');
+                Route::match(['GET', 'POST'], 'verify-device/resend-otp', ResendDeviceCodeController::class)->middleware('throttle:otp')->name('verify-device.resend-otp');
+                Route::match(['GET', 'POST'], 'resend-verification-code', ResendDeviceCodeController::class)->middleware('throttle:otp')->name('resend-verification-code');
                 Route::post('forgot-password', ForgotPasswordController::class)->middleware('throttle:password-reset')->name('forgot-password');
                 Route::post('reset-password', ResetPasswordController::class)->middleware('throttle:password-reset')->name('reset-password');
 

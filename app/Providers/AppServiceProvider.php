@@ -5,6 +5,7 @@ namespace App\Providers;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 
@@ -29,7 +30,7 @@ class AppServiceProvider extends ServiceProvider
         // fall back to cookie sessions instead of crashing with a 500 error on web requests.
         if (config('session.driver') === 'database' && ! app()->runningInConsole()) {
             try {
-                if (! \Illuminate\Support\Facades\Schema::hasTable(config('session.table', 'sessions'))) {
+                if (! Schema::hasTable(config('session.table', 'sessions'))) {
                     config(['session.driver' => 'cookie']);
                 }
             } catch (\Throwable) {

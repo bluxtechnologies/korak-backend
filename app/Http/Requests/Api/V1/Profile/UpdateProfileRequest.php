@@ -26,7 +26,7 @@ class UpdateProfileRequest extends FormRequest
         if ($this->filled('name') && ! $this->filled('first_name')) {
             $parts = explode(' ', trim((string) $this->input('name')), 2);
             $this->merge([
-                'first_name' => $parts[0] ?? null,
+                'first_name' => $parts[0],
                 'last_name' => $parts[1] ?? null,
             ]);
         }
@@ -94,6 +94,10 @@ class UpdateProfileRequest extends FormRequest
                 'email',
                 'max:255',
                 Rule::unique('customers', 'email')->ignore($customerId),
+            ],
+            'device_verification_enabled' => [
+                'sometimes',
+                'boolean',
             ],
         ];
     }

@@ -52,6 +52,7 @@ it('retrieves the authenticated customer profile per Roadmap B11.1', function ()
                 'phone' => $customer->phone,
                 'phone_number' => $customer->phone_number,
                 'email_verified_at' => $customer->email_verified_at?->toIso8601String(),
+                'device_verification_enabled' => false,
                 'has_virtual_account' => false,
                 'virtual_account' => null,
                 'created_at' => $customer->created_at->toIso8601String(),

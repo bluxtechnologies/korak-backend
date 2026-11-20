@@ -160,6 +160,95 @@ class DeviceVerificationService
     }
 
     /**
+     * Resend an OTP challenge for an existing active challenge.
+     *
+     * @return array{successful: bool, challenge_token?: string, expires_at?: Carbon, message?: string, code?: string, status?: int, customer?: Customer}
+     */
+    public function resendChallenge(
+        string $challengeToken,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $deviceName = null,
+    ): array {
+        $challenge = CustomerDeviceChallenge::where('challenge_token', $challengeToken)->first();
+
+        if (! $challenge) {
+            return [
+                'successful' => false,
+                'message' => 'Invalid or expired verification challenge. Please log in again.',
+                'code' => 'invalid_or_expired_challenge',
+                'status' => 400,
+            ];
+        }
+
+        if (Carbon::now()->isAfter($challenge->expires_at)) {
+            $challenge->delete();
+
+            return [
+                'successful' => false,
+                'message' => 'Invalid or expired verification challenge. Please log in again.',
+                'code' => 'invalid_or_expired_challenge',
+                'status' => 400,
+            ];
+        }
+
+        $otp = sprintf('%06d', random_int(0, 999999));
+        $expiresAt = Carbon::now()->addMinutes(self::OTP_EXPIRY_MINUTES);
+
+        $challenge->update([
+            'otp_hash' => hash('sha256', $otp),
+            'attempts' => 0,
+            'expires_at' => $expiresAt,
+            'ip_address' => $ipAddress ?: $challenge->ip_address,
+            'user_agent' => $userAgent ?: $challenge->user_agent,
+            'device_name' => $deviceName ?: $challenge->device_name,
+        ]);
+
+        $customer = $challenge->customer;
+
+        try {
+            $customer->notify(new DeviceVerificationOtpNotification(
+                code: $otp,
+                deviceName: $challenge->device_name ?: 'Unknown Device',
+                ipAddress: $ipAddress ?: $challenge->ip_address,
+            ));
+        } catch (\Throwable $e) {
+            Log::error('Failed to dispatch DeviceVerificationOtpNotification on resend: '.$e->getMessage(), [
+                'customer_id' => $customer->id,
+                'email' => $customer->email,
+            ]);
+        }
+
+        return [
+            'successful' => true,
+            'challenge_token' => $challenge->challenge_token,
+            'expires_at' => $expiresAt,
+            'customer' => $customer,
+        ];
+    }
+
+    /**
+     * Issue or renew an OTP challenge for a customer directly.
+     *
+     * @return array{successful: bool, challenge_token: string, expires_at: Carbon, customer: Customer}
+     */
+    public function resendForCustomer(
+        Customer $customer,
+        ?string $deviceName = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+    ): array {
+        $challengeData = $this->createChallenge($customer, $deviceName, $ipAddress, $userAgent);
+
+        return [
+            'successful' => true,
+            'challenge_token' => $challengeData['challenge_token'],
+            'expires_at' => $challengeData['expires_at'],
+            'customer' => $customer,
+        ];
+    }
+
+    /**
      * Store a trusted device and return the plain-text token.
      */
     public function rememberDevice(Customer $customer, ?string $deviceName = null, ?string $ipAddress = null): string
