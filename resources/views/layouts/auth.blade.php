@@ -24,8 +24,25 @@
     <!-- Icons css -->
     <link href="{{ asset('admin/assets/css/icons.min.css') }}" rel="stylesheet" type="text/css" />
 
-    <!-- Toastr CDN css -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" integrity="sha512-vKMx8UnXk60zUwyUnUPM3HbQo8QfmNx7+ltw8Pm5zLusl1XIfwcxo8DbWCqMGKaWeNxWA8yrx5v3SaVpMvR3CA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- Toastr css (Local with CDN fallback) -->
+    <link rel="stylesheet" href="{{ asset('admin/assets/vendor/toastr/toastr.min.css') }}" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.css" />
+
+    <style>
+        /* Ensure Toastr displays above Bootstrap 5 modals/cards and overrides Bootstrap .toast hiding */
+        #toast-container {
+            position: fixed !important;
+            z-index: 9999999 !important;
+            pointer-events: auto !important;
+        }
+        #toast-container > .toast {
+            display: block !important;
+            opacity: 0.95 !important;
+        }
+        #toast-container > .toast:hover {
+            opacity: 1 !important;
+        }
+    </style>
 </head>
 
 <body>
@@ -46,43 +63,54 @@
         </div>
     </div>
 
-    <!-- jQuery -->
-    <script src="{{ asset('admin/assets/js/jquery.min.js') }}"></script>
-
-    <!-- Vendor js -->
+    <!-- Vendor js (includes jQuery 3.7.1) -->
     <script src="{{ asset('admin/assets/js/vendor.min.js') }}"></script>
+
+    <!-- Lucide fallback guard -->
+    <script>
+        window.lucide = window.lucide || { createIcons: function() {} };
+    </script>
 
     <!-- App js -->
     <script src="{{ asset('admin/assets/js/app.js') }}"></script>
 
-    <!-- Toastr CDN js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js" integrity="sha512-VEd+nq25CkR676O+pLBnDW09BD7EDDAQyg6xgZxhUZLj4mWsvH9ED0wp33N7exltNrNxWbxKF57TL48MLcg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <!-- Toastr js (Local asset with CDN fallback) -->
+    <script src="{{ asset('admin/assets/vendor/toastr/toastr.min.js') }}"></script>
+    <script>
+        if (typeof window.toastr === 'undefined') {
+            document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.4/toastr.min.js"><\/script>');
+        }
+    </script>
 
     <script>
-        toastr.options = {
-            "closeButton": true,
-            "debug": false,
-            "newestOnTop": true,
-            "progressBar": true,
-            "positionClass": "toast-top-right",
-            "preventDuplicates": false,
-            "onclick": null,
-            "showDuration": "300",
-            "hideDuration": "1000",
-            "timeOut": "4000",
-            "extendedTimeOut": "1000",
-            "showEasing": "swing",
-            "hideEasing": "linear",
-            "showMethod": "fadeIn",
-            "hideMethod": "fadeOut"
-        };
+        if (typeof toastr !== 'undefined') {
+            toastr.options = {
+                "closeButton": true,
+                "debug": false,
+                "newestOnTop": true,
+                "progressBar": true,
+                "positionClass": "toast-top-right",
+                "preventDuplicates": false,
+                "onclick": null,
+                "showDuration": "300",
+                "hideDuration": "1000",
+                "timeOut": "4000",
+                "extendedTimeOut": "1000",
+                "showEasing": "swing",
+                "hideEasing": "linear",
+                "showMethod": "fadeIn",
+                "hideMethod": "fadeOut"
+            };
+        }
 
-        $.ajaxSetup({
-            headers: {
-                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
-                'Accept': 'application/json'
-            }
-        });
+        if (typeof $ !== 'undefined') {
+            $.ajaxSetup({
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Accept': 'application/json'
+                }
+            });
+        }
     </script>
 
     @yield('scripts')

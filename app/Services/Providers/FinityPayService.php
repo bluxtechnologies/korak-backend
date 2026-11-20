@@ -56,6 +56,14 @@ class FinityPayService
     }
 
     /**
+     * Determine if mock payment provider mode is enabled.
+     */
+    public function isMock(): bool
+    {
+        return (bool) config('services.finitypay.mock', false);
+    }
+
+    /**
      * Build standard headers for FinityPay / CoFinance API calls.
      *
      * @return array<string, string>
@@ -353,6 +361,15 @@ class FinityPayService
         string $reference,
         ?string $redirectUrl = null
     ): array {
+        if ($this->isMock()) {
+            return [
+                'status' => 'success',
+                'reference' => $reference,
+                'checkout_url' => 'https://mock.korak.test/pay/'.$reference,
+                'provider_reference' => 'mock_pay_'.Str::random(12),
+            ];
+        }
+
         $secretKey = $this->getSecretKey();
         $baseUrl = $this->getBaseUrl();
 
@@ -427,7 +444,7 @@ class FinityPayService
 
             return [
                 'status' => 'error',
-                'message' => 'Could not connect to payment provider.',
+                'message' => 'Could not connect to payment provider. Please try again later.',
             ];
         }
     }
@@ -442,7 +459,7 @@ class FinityPayService
         $customerPhone = $phone ?: $customer->phone ?: '08000000000';
         $fullName = trim("{$customer->first_name} {$customer->last_name}") ?: $customer->username;
 
-        if (config('services.finitypay.mock', false)) {
+        if ($this->isMock()) {
             $mockCustomerId = 'mock_cust_'.Str::random(12);
             $customer->update(['provider_customer_id' => $mockCustomerId]);
 
@@ -514,7 +531,7 @@ class FinityPayService
 
             return [
                 'status' => 'error',
-                'message' => 'Could not connect to payment provider: '.$e->getMessage(),
+                'message' => 'Could not connect to payment provider. Please try again later.',
             ];
         }
     }
@@ -551,7 +568,7 @@ class FinityPayService
         $customerPhone = $phone ?: $customer->phone ?: '08000000000';
 
         // Local development / mock mode support
-        if (config('services.finitypay.mock', false)) {
+        if ($this->isMock()) {
             $mockAccountNumber = '99'.str_pad((string) $customer->id, 8, '0', STR_PAD_LEFT);
             /** @var CustomerVirtualAccount $account */
             $account = CustomerVirtualAccount::create([
@@ -674,7 +691,7 @@ class FinityPayService
 
             return [
                 'status' => 'error',
-                'message' => 'Could not connect to payment provider: '.$e->getMessage(),
+                'message' => 'Could not connect to payment provider. Please try again later.',
             ];
         }
     }
@@ -686,6 +703,17 @@ class FinityPayService
      */
     public function verifyPayment(string $reference): array
     {
+        if ($this->isMock()) {
+            return [
+                'status' => 'success',
+                'data' => [
+                    'reference' => $reference,
+                    'status' => 'success',
+                    'mock' => true,
+                ],
+            ];
+        }
+
         $secretKey = $this->getSecretKey();
         $baseUrl = $this->getBaseUrl();
 

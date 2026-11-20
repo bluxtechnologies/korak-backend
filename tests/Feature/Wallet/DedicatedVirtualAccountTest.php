@@ -2,8 +2,10 @@
 
 use App\Models\Customer;
 use App\Models\CustomerVirtualAccount;
+use App\Services\Providers\FinityPayService;
 use App\Services\Wallet\WalletService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
@@ -15,7 +17,8 @@ beforeEach(function (): void {
     config([
         'services.finitypay.secret_key' => 'sk_live_test_secret',
         'services.finitypay.webhook_secret' => 'whsec_test_mock_webhook_secret',
-        'services.finitypay.base_url' => 'https://api.cofinance.ng/v1',
+        'services.finitypay.base_url' => 'https://api.finitypay.com.ng/v1',
+        'services.finitypay.mock' => false,
     ]);
 });
 
@@ -50,7 +53,7 @@ it('successfully creates customer on provider and generates dedicated virtual ac
     ]);
 
     Http::fake([
-        'https://api.cofinance.ng/v1/customers' => Http::response([
+        '*/customers' => Http::response([
             'status' => 'success',
             'data' => [
                 'id' => 'cust_82a931fd',
@@ -59,7 +62,7 @@ it('successfully creates customer on provider and generates dedicated virtual ac
                 'phone' => '08012345678',
             ],
         ], 200),
-        'https://api.cofinance.ng/v1/virtual-accounts' => Http::response([
+        '*/virtual-accounts' => Http::response([
             'status' => 'success',
             'data' => [
                 'id' => 'acc_31b9_test',
@@ -264,4 +267,44 @@ it('generates mock dedicated account when mock mode is enabled', function (): vo
         'bank_name' => 'Wema Bank',
         'provider' => 'mock_provider',
     ]);
+});
+
+it('handles cURL or DNS connection failure cleanly with sanitized error message and 502 code', function (): void {
+    $customer = Customer::factory()->create([
+        'username' => 'samuel',
+        'first_name' => 'Samuel',
+        'last_name' => 'Okafor',
+        'phone' => '08099887711',
+        'email' => 'samuel@example.com',
+    ]);
+
+    Http::fake([
+        '*' => function () {
+            throw new ConnectionException('cURL error 6: Could not resolve host: api.cofinance.ng (see https://curl.se/libcurl/c/libcurl-errors.html) for https://api.cofinance.ng/v1/customers');
+        },
+    ]);
+
+    $response = $this->actingAs($customer, 'customer')
+        ->postJson('/api/v1/wallet/dedicated-account');
+
+    $response->assertStatus(502)
+        ->assertJson([
+            'message' => 'Could not connect to payment provider. Please try again later.',
+            'code' => 'dedicated_account_generation_failed',
+        ]);
+
+    $rawContent = (string) $response->getContent();
+    expect($rawContent)->not->toContain('cURL')
+        ->and($rawContent)->not->toContain('api.cofinance.ng')
+        ->and($rawContent)->not->toContain('curl.se');
+});
+
+it('correctly reports isMock status on FinityPayService', function (): void {
+    $service = app(FinityPayService::class);
+
+    config()->set('services.finitypay.mock', false);
+    expect($service->isMock())->toBeFalse();
+
+    config()->set('services.finitypay.mock', true);
+    expect($service->isMock())->toBeTrue();
 });

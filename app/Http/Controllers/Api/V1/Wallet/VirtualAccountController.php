@@ -98,11 +98,24 @@ class VirtualAccountController extends Controller
 
         $wallet = $this->walletService->getOrCreateWallet($customer);
 
-        $result = $this->finityPayService->createVirtualAccount(
-            customer: $customer,
-            wallet: $wallet,
-            phone: $customer->phone
-        );
+        try {
+            $result = $this->finityPayService->createVirtualAccount(
+                customer: $customer,
+                wallet: $wallet,
+                phone: $customer->phone
+            );
+        } catch (\Throwable $e) {
+            Log::error('Dedicated virtual account generation exception', [
+                'customer_id' => $customer->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ApiResponse::error(
+                message: 'Could not connect to payment provider. Please try again later.',
+                code: 'dedicated_account_generation_failed',
+                status: 502
+            );
+        }
 
         if ($result['status'] !== 'success') {
             Log::warning('Dedicated virtual account generation failed', [
@@ -110,8 +123,13 @@ class VirtualAccountController extends Controller
                 'error' => $result['message'] ?? null,
             ]);
 
+            $rawMessage = $result['message'] ?? 'Unable to generate dedicated bank account at this time.';
+            if (preg_match('/cURL|curl|resolve host|connection|timeout|failed to connect/i', $rawMessage)) {
+                $rawMessage = 'Could not connect to payment provider. Please try again later.';
+            }
+
             return ApiResponse::error(
-                message: $result['message'] ?? 'Unable to generate dedicated bank account at this time.',
+                message: $rawMessage,
                 code: 'dedicated_account_generation_failed',
                 status: 502
             );

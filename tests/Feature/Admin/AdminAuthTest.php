@@ -154,7 +154,7 @@ it('redirects unauthenticated guest accessing dashboard to login', function (): 
     $response->assertRedirect(route('admin.login'));
 });
 
-it('allows authenticated admin to view dashboard', function (): void {
+it('allows authenticated admin to view dashboard and renders sidebar navigation links', function (): void {
     $admin = Admin::factory()->create([
         'username' => 'superboss',
     ]);
@@ -163,7 +163,15 @@ it('allows authenticated admin to view dashboard', function (): void {
 
     $response->assertOk()
         ->assertViewIs('admin.dashboard')
-        ->assertSee('Welcome back, superboss!');
+        ->assertSee('Welcome back, superboss!')
+        ->assertSee('Dashboard')
+        ->assertSee('Customers')
+        ->assertSee('Funding Agents')
+        ->assertSee('Providers (3rd Party API)')
+        ->assertSee('Failed Jobs')
+        ->assertSee('Site Settings')
+        ->assertSee('Admins')
+        ->assertSee('My Profile');
 });
 
 it('renders forgot password page', function (): void {

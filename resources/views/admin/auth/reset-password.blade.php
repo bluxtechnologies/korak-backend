@@ -8,7 +8,9 @@
 <h3 class="fw-semibold mb-2">Set New Password</h3>
 <p class="text-muted mb-4">Choose a strong new password for your administrator account.</p>
 
-<form id="reset-form" class="text-start mb-3" novalidate>
+<div id="fallback-alert" class="alert alert-danger d-none text-start mb-3" role="alert"></div>
+
+<form id="reset-form" action="{{ route('admin.reset-password.submit') }}" method="POST" class="text-start mb-3" novalidate>
     @csrf
     <input type="hidden" name="token" value="{{ $token }}">
 
@@ -50,6 +52,18 @@
         const $btn = $('#reset-btn');
         const $btnText = $btn.find('.btn-text');
         const $spinner = $btn.find('.spinner-border');
+        const $alert = $('#fallback-alert');
+
+        function showToast(type, message) {
+            if (typeof toastr !== 'undefined' && typeof toastr[type] === 'function') {
+                toastr[type](message);
+            } else {
+                $alert.removeClass('alert-success alert-danger alert-info alert-warning')
+                    .addClass('alert-' + (type === 'error' ? 'danger' : type))
+                    .text(message)
+                    .removeClass('d-none');
+            }
+        }
 
         function setLoading(loading) {
             if (loading) {
@@ -66,6 +80,7 @@
         function clearErrors() {
             $('.is-invalid').removeClass('is-invalid');
             $('.invalid-feedback').text('');
+            $alert.addClass('d-none').text('');
         }
 
         $form.on('submit', function(e) {
@@ -74,19 +89,23 @@
             setLoading(true);
 
             $.ajax({
-                url: '{{ route('admin.reset-password.submit') }}',
+                url: $form.attr('action'),
                 type: 'POST',
                 data: $form.serialize(),
                 dataType: 'json',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
                 success: function(response) {
                     if (response.status === 'success') {
-                        toastr.success(response.message || 'Password reset successfully! Redirecting...');
+                        showToast('success', response.message || 'Password reset successfully! Redirecting...');
                         setTimeout(function() {
                             window.location.href = response.redirect_url;
                         }, 800);
                     } else {
                         setLoading(false);
-                        toastr.error(response.message || 'Failed to reset password.');
+                        showToast('error', response.message || 'Failed to reset password.');
                     }
                 },
                 error: function(xhr) {
@@ -94,7 +113,11 @@
                     const res = xhr.responseJSON;
 
                     if (xhr.status === 422 && res && res.errors) {
+                        let firstError = null;
                         $.each(res.errors, function(field, messages) {
+                            if (!firstError) {
+                                firstError = messages[0];
+                            }
                             const $input = $('#' + field);
                             const $errorDiv = $('#' + field + '-error');
                             $input.addClass('is-invalid');
@@ -102,11 +125,14 @@
                                 $errorDiv.text(messages[0]);
                             }
                         });
-                        toastr.error(res.message || 'Please correct the highlighted errors.');
+                        showToast('error', firstError || res.message || 'Please correct the highlighted errors.');
                     } else if (res && res.message) {
-                        toastr.error(res.message);
+                        $('#email').addClass('is-invalid');
+                        $('#password').addClass('is-invalid');
+                        $('#email-error').text(res.message);
+                        showToast('error', res.message);
                     } else {
-                        toastr.error('An unexpected error occurred. Please try again.');
+                        showToast('error', 'An unexpected error occurred. Please try again.');
                     }
                 }
             });
@@ -115,6 +141,7 @@
         $('#email, #password, #password_confirmation').on('input', function() {
             $(this).removeClass('is-invalid');
             $('#' + $(this).attr('id') + '-error').text('');
+            $alert.addClass('d-none');
         });
     });
 </script>

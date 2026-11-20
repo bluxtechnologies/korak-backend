@@ -43,7 +43,7 @@ return [
         'secret_key' => env('FINITYPAY_SECRET_KEY', env('COFINANCE_SECRET_KEY')),
         'webhook_secret' => env('FINITYPAY_WEBHOOK_SECRET', env('COFINANCE_WEBHOOK_SECRET')),
         'skip_webhook_verify' => (bool) env('FINITYPAY_SKIP_WEBHOOK_VERIFY', false),
-        'mock' => (bool) env('FINITYPAY_MOCK', env('MOCK_PAYMENT_PROVIDER', false)),
+        'mock' => (bool) env('MOCK_PAYMENT_PROVIDER', env('FINITYPAY_MOCK', false)),
         'timeout' => 25,
     ],
 
