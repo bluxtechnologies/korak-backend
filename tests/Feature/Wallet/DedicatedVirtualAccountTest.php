@@ -3,6 +3,7 @@
 use App\Models\Customer;
 use App\Models\CustomerVirtualAccount;
 use App\Services\Providers\FinityPayService;
+use App\Services\Wallet\DedicatedAccountService;
 use App\Services\Wallet\WalletService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
@@ -289,14 +290,34 @@ it('handles cURL or DNS connection failure cleanly with sanitized error message 
 
     $response->assertStatus(502)
         ->assertJson([
-            'message' => 'Could not connect to payment provider. Please try again later.',
-            'code' => 'dedicated_account_generation_failed',
+            'status' => 'error',
+            'code' => 'provider_unavailable',
+            'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
         ]);
 
     $rawContent = (string) $response->getContent();
     expect($rawContent)->not->toContain('cURL')
         ->and($rawContent)->not->toContain('api.cofinance.ng')
         ->and($rawContent)->not->toContain('curl.se');
+});
+
+it('DedicatedAccountService catches ConnectException and returns provider_unavailable', function (): void {
+    $customer = Customer::factory()->create();
+    $service = app(DedicatedAccountService::class);
+
+    Http::fake([
+        '*' => function () {
+            throw new ConnectionException('cURL error 6: Could not resolve host: api.cofinance.ng');
+        },
+    ]);
+
+    $result = $service->generateAccount($customer);
+
+    expect($result)->toBe([
+        'status' => 'error',
+        'code' => 'provider_unavailable',
+        'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+    ]);
 });
 
 it('correctly reports isMock status on FinityPayService', function (): void {

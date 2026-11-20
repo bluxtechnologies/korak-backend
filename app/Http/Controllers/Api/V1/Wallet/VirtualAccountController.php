@@ -9,10 +9,15 @@ use App\Http\Responses\ApiResponse;
 use App\Models\Customer;
 use App\Models\CustomerVirtualAccount;
 use App\Services\Providers\FinityPayService;
+use App\Services\Wallet\DedicatedAccountService;
 use App\Services\Wallet\WalletService;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\RequestException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class VirtualAccountController extends Controller
 {
@@ -22,6 +27,7 @@ class VirtualAccountController extends Controller
     public function __construct(
         protected WalletService $walletService,
         protected FinityPayService $finityPayService,
+        protected DedicatedAccountService $dedicatedAccountService,
     ) {}
 
     /**
@@ -99,22 +105,32 @@ class VirtualAccountController extends Controller
         $wallet = $this->walletService->getOrCreateWallet($customer);
 
         try {
-            $result = $this->finityPayService->createVirtualAccount(
+            $result = $this->dedicatedAccountService->generateAccount(
                 customer: $customer,
-                wallet: $wallet,
                 phone: $customer->phone
             );
-        } catch (\Throwable $e) {
+        } catch (ConnectException|RequestException|ConnectionException $e) {
+            Log::error('Dedicated virtual account connection exception', [
+                'customer_id' => $customer->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'code' => 'provider_unavailable',
+                'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+            ], 502);
+        } catch (Throwable $e) {
             Log::error('Dedicated virtual account generation exception', [
                 'customer_id' => $customer->id,
                 'error' => $e->getMessage(),
             ]);
 
-            return ApiResponse::error(
-                message: 'Could not connect to payment provider. Please try again later.',
-                code: 'dedicated_account_generation_failed',
-                status: 502
-            );
+            return response()->json([
+                'status' => 'error',
+                'code' => 'provider_unavailable',
+                'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+            ], 502);
         }
 
         if ($result['status'] !== 'success') {
@@ -123,16 +139,19 @@ class VirtualAccountController extends Controller
                 'error' => $result['message'] ?? null,
             ]);
 
-            $rawMessage = $result['message'] ?? 'Unable to generate dedicated bank account at this time.';
-            if (preg_match('/cURL|curl|resolve host|connection|timeout|failed to connect/i', $rawMessage)) {
-                $rawMessage = 'Could not connect to payment provider. Please try again later.';
+            $rawMessage = $result['message'] ?? 'Payment provider is currently undergoing maintenance. Please try again shortly.';
+            $code = $result['code'] ?? 'provider_unavailable';
+
+            if (preg_match('/cURL|curl|resolve host|connection|timeout|failed to connect|undergoing maintenance/i', $rawMessage)) {
+                $rawMessage = 'Payment provider is currently undergoing maintenance. Please try again shortly.';
+                $code = 'provider_unavailable';
             }
 
-            return ApiResponse::error(
-                message: $rawMessage,
-                code: 'dedicated_account_generation_failed',
-                status: 502
-            );
+            return response()->json([
+                'status' => 'error',
+                'code' => $code,
+                'message' => $rawMessage,
+            ], 502);
         }
 
         /** @var CustomerVirtualAccount $account */

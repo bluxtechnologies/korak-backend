@@ -13,10 +13,14 @@ use App\Models\Wallet;
 use App\Notifications\WalletFundedNotification;
 use App\Services\Wallet\WalletService;
 use Exception;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\RequestException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class FinityPayService
 {
@@ -526,12 +530,21 @@ class FinityPayService
                 'status' => 'error',
                 'message' => $response->json('message') ?? 'Failed to register customer with payment provider.',
             ];
-        } catch (Exception $e) {
+        } catch (ConnectException|RequestException|ConnectionException $e) {
+            Log::error('FinityPay createCustomer connection exception', ['error' => $e->getMessage()]);
+
+            return [
+                'status' => 'error',
+                'code' => 'provider_unavailable',
+                'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+            ];
+        } catch (Throwable $e) {
             Log::error('FinityPay createCustomer exception', ['error' => $e->getMessage()]);
 
             return [
                 'status' => 'error',
-                'message' => 'Could not connect to payment provider. Please try again later.',
+                'code' => 'provider_unavailable',
+                'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
             ];
         }
     }
@@ -686,12 +699,21 @@ class FinityPayService
                 'status' => 'error',
                 'message' => $response->json('message') ?? 'Failed to generate dedicated virtual account.',
             ];
-        } catch (Exception $e) {
+        } catch (ConnectException|RequestException|ConnectionException $e) {
+            Log::error('FinityPay createVirtualAccount connection exception', ['error' => $e->getMessage()]);
+
+            return [
+                'status' => 'error',
+                'code' => 'provider_unavailable',
+                'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+            ];
+        } catch (Throwable $e) {
             Log::error('FinityPay createVirtualAccount exception', ['error' => $e->getMessage()]);
 
             return [
                 'status' => 'error',
-                'message' => 'Could not connect to payment provider. Please try again later.',
+                'code' => 'provider_unavailable',
+                'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
             ];
         }
     }
