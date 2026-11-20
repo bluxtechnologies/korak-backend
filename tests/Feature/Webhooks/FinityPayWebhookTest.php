@@ -15,7 +15,7 @@ beforeEach(function (): void {
     Cache::flush();
     config([
         'services.finitypay.secret_key' => 'sk_live_test_secret',
-        'services.finitypay.webhook_secret' => 'f1qvuSR9IhshctqaPHZ3nXqJs2irapUA',
+        'services.finitypay.webhook_secret' => 'whsec_test_mock_webhook_secret',
         'services.finitypay.skip_webhook_verify' => false,
         'services.finitypay.base_url' => 'https://api.cofinance.ng/v1',
     ]);
