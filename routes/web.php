@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminAuthController;
+use App\Http\Controllers\Admin\AdminCustomerController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Api\V1\Webhooks\FinityPayWebhookController;
 use App\Models\Customer;
@@ -88,5 +89,6 @@ Route::prefix('admininistator')->group(function (): void {
     Route::middleware('auth:admin')->group(function (): void {
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('admin.logout');
         Route::get('dashboard', [AdminDashboardController::class, 'index'])->name('admin.dashboard');
+        Route::get('customers', [AdminCustomerController::class, 'index'])->name('admin.customers.index');
     });
 });
