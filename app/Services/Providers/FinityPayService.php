@@ -521,10 +521,16 @@ class FinityPayService
                 ];
             }
 
-            Log::warning('FinityPay createCustomer rejected by provider', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
+            if ($response->status() === 401) {
+                Log::error('FinityPay returned 401 Unauthorized - API Secret Key is invalid or expired', [
+                    'body' => $response->body(),
+                ]);
+            } else {
+                Log::warning('FinityPay createCustomer rejected by provider', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+            }
 
             return [
                 'status' => 'error',
@@ -694,10 +700,16 @@ class FinityPayService
                 ];
             }
 
-            Log::warning('FinityPay createVirtualAccount rejected by provider', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
+            if ($response->status() === 401) {
+                Log::error('FinityPay returned 401 Unauthorized - API Secret Key is invalid or expired', [
+                    'body' => $response->body(),
+                ]);
+            } else {
+                Log::warning('FinityPay createVirtualAccount rejected by provider', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+            }
 
             return [
                 'status' => 'error',
