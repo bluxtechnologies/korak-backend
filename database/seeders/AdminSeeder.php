@@ -6,6 +6,7 @@ use App\Enums\AdminRole;
 use App\Models\Admin;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class AdminSeeder extends Seeder
 {
@@ -15,18 +16,29 @@ class AdminSeeder extends Seeder
     public function run(): void
     {
         // Standard test super admin (no real credentials, Doc 07 §9).
-        Admin::factory()->superAdmin()->create([
-            'username' => 'superadmin',
-            'email' => 'superadmin@korakdigital.com',
-            'password' => Hash::make('adminPswd!!123'),
-        ]);
+        Admin::updateOrCreate(
+            ['username' => 'superadmin'],
+            [
+                'email' => 'superadmin@korakdigital.com',
+                'email_verified_at' => now(),
+                'password' => Hash::make('adminPswd!!123'),
+                'role' => AdminRole::SuperAdmin,
+                'is_active' => true,
+                'remember_token' => Str::random(10),
+            ]
+        );
 
         // Standard test admin.
-        Admin::factory()->create([
-            'username' => 'admin',
-            'email' => 'admin@korakdigital.com',
-            'role' => AdminRole::Admin,
-            'password' => Hash::make('adminPswd!!123'),
-        ]);
+        Admin::updateOrCreate(
+            ['username' => 'admin'],
+            [
+                'email' => 'admin@korakdigital.com',
+                'email_verified_at' => now(),
+                'password' => Hash::make('adminPswd!!123'),
+                'role' => AdminRole::Admin,
+                'is_active' => true,
+                'remember_token' => Str::random(10),
+            ]
+        );
     }
 }

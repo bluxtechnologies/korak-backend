@@ -19,7 +19,7 @@ beforeEach(function (): void {
         'services.finitypay.secret_key' => 'sk_test_secret_123',
         'services.finitypay.webhook_secret' => 'whsec_test_secret_456',
         'services.finitypay.skip_webhook_verify' => false,
-        'services.finitypay.base_url' => 'https://api.cofinance.ng/v1',
+        'services.finitypay.base_url' => 'https://api.finitypay.com.ng/v1',
     ]);
 });
 
@@ -49,7 +49,7 @@ it('verifies valid HMAC SHA256 webhook signatures across formats per Doc 14 §4'
 
 it('initiates payment request to FinityPay gateway per Doc 15 §4', function (): void {
     Http::fake([
-        'https://api.cofinance.ng/v1/payments' => Http::response([
+        'https://api.finitypay.com.ng/v1/payments' => Http::response([
             'status' => 'success',
             'data' => [
                 'reference' => 'KORAK-FUND-TEST123',
@@ -76,7 +76,7 @@ it('initiates payment request to FinityPay gateway per Doc 15 §4', function ():
         ->and($result['checkout_url'])->toBe('https://checkout.cofinance.ng/pay/test123');
 
     Http::assertSent(function ($request): bool {
-        return $request->url() === 'https://api.cofinance.ng/v1/payments'
+        return $request->url() === 'https://api.finitypay.com.ng/v1/payments'
             && $request['amount'] == 500.00
             && $request['customer_email'] === 'payer@example.com'
             && $request['reference'] === 'KORAK-FUND-TEST123';

@@ -36,7 +36,13 @@ class FinityPayService
      */
     public function getBaseUrl(): string
     {
-        return rtrim((string) config('services.finitypay.base_url', 'https://api.finitypay.com.ng/v1'), '/');
+        $url = (string) config('services.finitypay.base_url', 'https://api.finitypay.com.ng/v1');
+
+        if (str_contains($url, 'api.cofinance.ng')) {
+            $url = str_replace('api.cofinance.ng', 'api.finitypay.com.ng', $url);
+        }
+
+        return rtrim($url, '/');
     }
 
     /**

@@ -17,7 +17,7 @@ beforeEach(function (): void {
         'services.finitypay.secret_key' => 'sk_live_test_secret',
         'services.finitypay.webhook_secret' => 'whsec_test_mock_webhook_secret',
         'services.finitypay.skip_webhook_verify' => false,
-        'services.finitypay.base_url' => 'https://api.cofinance.ng/v1',
+        'services.finitypay.base_url' => 'https://api.finitypay.com.ng/v1',
     ]);
 });
 

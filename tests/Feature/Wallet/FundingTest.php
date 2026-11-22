@@ -23,7 +23,7 @@ beforeEach(function (): void {
         'services.finitypay.secret_key' => 'sk_live_test_secret',
         'services.finitypay.webhook_secret' => 'whsec_test_secret',
         'services.finitypay.skip_webhook_verify' => false,
-        'services.finitypay.base_url' => 'https://api.cofinance.ng/v1',
+        'services.finitypay.base_url' => 'https://api.finitypay.com.ng/v1',
     ]);
 });
 
@@ -46,7 +46,7 @@ it('validates minimum funding amount of 100 NGN (10000 kobo) per Doc 14', functi
 
 it('initiates wallet funding session and returns checkout URL per Roadmap B14.1', function (): void {
     Http::fake([
-        'https://api.cofinance.ng/v1/payments' => Http::response([
+        'https://api.finitypay.com.ng/v1/payments' => Http::response([
             'status' => 'success',
             'data' => [
                 'reference' => 'KORAK-FUND-ABCXYZ',

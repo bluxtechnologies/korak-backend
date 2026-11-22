@@ -32,9 +32,11 @@ class AdminFactory extends Factory
      */
     public function definition(): array
     {
+        $hasFake = function_exists('fake');
+
         return [
-            'username' => fake()->unique()->userName(),
-            'email' => fake()->unique()->safeEmail(),
+            'username' => $hasFake ? fake()->unique()->userName() : 'admin_'.Str::lower(Str::random(8)),
+            'email' => $hasFake ? fake()->unique()->safeEmail() : 'admin_'.Str::lower(Str::random(8)).'@example.com',
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'role' => AdminRole::Admin,
