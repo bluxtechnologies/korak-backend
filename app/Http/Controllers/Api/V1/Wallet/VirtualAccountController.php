@@ -119,6 +119,7 @@ class VirtualAccountController extends Controller
                 'status' => 'error',
                 'code' => 'provider_unavailable',
                 'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+                'temp_error' => $e->getMessage(),
             ], 502);
         } catch (Throwable $e) {
             Log::error('Dedicated virtual account generation exception', [
@@ -130,6 +131,7 @@ class VirtualAccountController extends Controller
                 'status' => 'error',
                 'code' => 'provider_unavailable',
                 'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+                'temp_error' => $e->getMessage(),
             ], 502);
         }
 
@@ -151,6 +153,7 @@ class VirtualAccountController extends Controller
                 'status' => 'error',
                 'code' => $code,
                 'message' => $rawMessage,
+                'temp_error' => $result['temp_error'] ?? $result['message'] ?? $rawMessage,
             ], 502);
         }
 

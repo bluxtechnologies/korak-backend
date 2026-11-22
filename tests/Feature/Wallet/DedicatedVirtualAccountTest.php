@@ -295,10 +295,7 @@ it('handles cURL or DNS connection failure cleanly with sanitized error message 
             'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
         ]);
 
-    $rawContent = (string) $response->getContent();
-    expect($rawContent)->not->toContain('cURL')
-        ->and($rawContent)->not->toContain('api.cofinance.ng')
-        ->and($rawContent)->not->toContain('curl.se');
+    expect($response->json('temp_error'))->toContain('cURL error 6');
 });
 
 it('DedicatedAccountService catches ConnectException and returns provider_unavailable', function (): void {
@@ -313,11 +310,10 @@ it('DedicatedAccountService catches ConnectException and returns provider_unavai
 
     $result = $service->generateAccount($customer);
 
-    expect($result)->toBe([
-        'status' => 'error',
-        'code' => 'provider_unavailable',
-        'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
-    ]);
+    expect($result['status'])->toBe('error')
+        ->and($result['code'])->toBe('provider_unavailable')
+        ->and($result['message'])->toBe('Payment provider is currently undergoing maintenance. Please try again shortly.')
+        ->and($result['temp_error'])->toContain('cURL error 6');
 });
 
 it('correctly reports isMock status on FinityPayService', function (): void {

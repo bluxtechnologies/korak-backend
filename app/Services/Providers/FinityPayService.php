@@ -456,7 +456,7 @@ class FinityPayService
     /**
      * Register customer on FinityPay provider.
      *
-     * @return array{status: string, data?: array<string, mixed>, message?: string}
+     * @return array{status: string, data?: array<string, mixed>, message?: string, code?: string, temp_error?: string}
      */
     public function createCustomer(Customer $customer, ?string $phone = null): array
     {
@@ -535,6 +535,7 @@ class FinityPayService
             return [
                 'status' => 'error',
                 'message' => $response->json('message') ?? 'Failed to register customer with payment provider.',
+                'temp_error' => $response->body() ?: ($response->json('message') ?? 'Failed to register customer with payment provider.'),
             ];
         } catch (ConnectException|RequestException|ConnectionException $e) {
             Log::error('FinityPay createCustomer connection exception', ['error' => $e->getMessage()]);
@@ -543,6 +544,7 @@ class FinityPayService
                 'status' => 'error',
                 'code' => 'provider_unavailable',
                 'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+                'temp_error' => $e->getMessage(),
             ];
         } catch (Throwable $e) {
             Log::error('FinityPay createCustomer exception', ['error' => $e->getMessage()]);
@@ -551,6 +553,7 @@ class FinityPayService
                 'status' => 'error',
                 'code' => 'provider_unavailable',
                 'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+                'temp_error' => $e->getMessage(),
             ];
         }
     }
@@ -558,7 +561,7 @@ class FinityPayService
     /**
      * Create or retrieve a dedicated virtual account for customer deposit.
      *
-     * @return array{status: string, data?: array<string, mixed>, message?: string}
+     * @return array{status: string, data?: array<string, mixed>, message?: string, code?: string, temp_error?: string}
      */
     public function createVirtualAccount(Customer $customer, Wallet $wallet, ?string $phone = null): array
     {
@@ -714,6 +717,7 @@ class FinityPayService
             return [
                 'status' => 'error',
                 'message' => $response->json('message') ?? 'Failed to generate dedicated virtual account.',
+                'temp_error' => $response->body() ?: ($response->json('message') ?? 'Failed to generate dedicated virtual account.'),
             ];
         } catch (ConnectException|RequestException|ConnectionException $e) {
             Log::error('FinityPay createVirtualAccount connection exception', ['error' => $e->getMessage()]);
@@ -722,6 +726,7 @@ class FinityPayService
                 'status' => 'error',
                 'code' => 'provider_unavailable',
                 'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+                'temp_error' => $e->getMessage(),
             ];
         } catch (Throwable $e) {
             Log::error('FinityPay createVirtualAccount exception', ['error' => $e->getMessage()]);
@@ -730,6 +735,7 @@ class FinityPayService
                 'status' => 'error',
                 'code' => 'provider_unavailable',
                 'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+                'temp_error' => $e->getMessage(),
             ];
         }
     }

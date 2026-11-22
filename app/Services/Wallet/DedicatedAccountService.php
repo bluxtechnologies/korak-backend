@@ -24,7 +24,7 @@ class DedicatedAccountService
     /**
      * Generate or retrieve a dedicated virtual account for the customer.
      *
-     * @return array{status: string, code?: string, message?: string, data?: array<string, mixed>}
+     * @return array{status: string, code?: string, message?: string, temp_error?: string, data?: array<string, mixed>}
      */
     public function generateAccount(Customer $customer, ?string $phone = null): array
     {
@@ -67,6 +67,7 @@ class DedicatedAccountService
                 'status' => 'error',
                 'code' => 'provider_unavailable',
                 'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+                'temp_error' => $e->getMessage(),
             ];
         } catch (Throwable $e) {
             Log::error('DedicatedAccountService unexpected exception', [
@@ -78,6 +79,7 @@ class DedicatedAccountService
                 'status' => 'error',
                 'code' => 'provider_unavailable',
                 'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+                'temp_error' => $e->getMessage(),
             ];
         }
     }
