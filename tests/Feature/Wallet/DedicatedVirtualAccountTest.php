@@ -325,3 +325,55 @@ it('correctly reports isMock status on FinityPayService', function (): void {
     config()->set('services.finitypay.mock', true);
     expect($service->isMock())->toBeTrue();
 });
+
+it('handles FinityPay list data response and saves inline customer UUID', function (): void {
+    $customer = Customer::factory()->create([
+        'username' => 'musabest',
+        'first_name' => 'Musa',
+        'last_name' => 'Alhaji',
+        'phone' => '+2348011223344',
+        'email' => 'musa@example.com',
+        'provider_customer_id' => null,
+    ]);
+
+    Http::fake([
+        '*/customers' => Http::response(['status' => 'error', 'message' => 'Customer already exists'], 400),
+        '*/virtual-accounts' => Http::response([
+            'status' => 'success',
+            'message' => 'Wallet funding accounts retrieved successfully.',
+            'data' => [
+                [
+                    'uuid' => 'vacc_908a8e3d_test',
+                    'account_number' => '7892341201',
+                    'bank_name' => 'Wema Bank',
+                    'account_name' => 'COFINANCE / Musa Alhaji',
+                    'status' => 'active',
+                    'customer' => [
+                        'uuid' => 'cust_82a931fd_inline',
+                        'name' => 'Musa Alhaji',
+                        'email' => 'musa@example.com',
+                    ],
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $response = $this->actingAs($customer, 'customer')
+        ->postJson('/api/v1/wallet/dedicated-account');
+
+    $response->assertCreated()
+        ->assertJson([
+            'data' => [
+                'bank_name' => 'Wema Bank',
+                'account_number' => '7892341201',
+                'account_name' => 'COFINANCE / Musa Alhaji',
+            ],
+            'meta' => [
+                'has_account' => true,
+                'created' => true,
+            ],
+        ]);
+
+    $customer->refresh();
+    expect($customer->provider_customer_id)->toBe('cust_82a931fd_inline');
+});

@@ -650,16 +650,34 @@ class FinityPayService
         if (! $customer->provider_customer_id) {
             $customerRes = $this->createCustomer($customer, $phone);
             if ($customerRes['status'] !== 'success') {
-                return $customerRes;
+                if (($customerRes['code'] ?? '') === 'provider_unavailable') {
+                    return $customerRes;
+                }
+                Log::info('FinityPay createCustomer non-critical notice; attempting inline virtual account generation', [
+                    'response' => $customerRes,
+                ]);
             }
         }
 
+        $bankPartner = (string) config('services.finitypay.bank_partner', 'wema');
+        $firstName = $customer->first_name ?: $customer->username;
+        $lastName = $customer->last_name ?: $customer->username;
+
         $payload = [
-            'customer_id' => $customer->provider_customer_id,
-            'customer_email' => $customer->email,
+            'bank_partner' => $bankPartner,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'name' => $fullName,
             'customer_name' => $fullName,
+            'email' => $customer->email,
+            'customer_email' => $customer->email,
+            'phone' => $customerPhone,
             'customer_phone' => $customerPhone,
         ];
+
+        if ($customer->provider_customer_id) {
+            $payload['customer_id'] = $customer->provider_customer_id;
+        }
 
         try {
             $headers = $this->buildHeaders();
@@ -676,14 +694,26 @@ class FinityPayService
                 $body = $response->json() ?? [];
                 /** @var array<string, mixed> $data */
                 $data = isset($body['data']) && is_array($body['data']) ? $body['data'] : $body;
+                if (isset($data[0]) && is_array($data[0])) {
+                    $data = $data[0];
+                }
                 $bankAccount = isset($data['bank_account']) && is_array($data['bank_account']) ? $data['bank_account'] : [];
 
                 $bankName = (string) ($bankAccount['bank_name'] ?? $data['bank_name'] ?? 'Wema Bank');
                 $bankCode = isset($bankAccount['bank_code']) ? (string) $bankAccount['bank_code'] : (isset($data['bank_code']) ? (string) $data['bank_code'] : null);
                 $accountNumber = (string) ($bankAccount['account_number'] ?? $data['account_number'] ?? '');
                 $accountName = (string) ($bankAccount['account_name'] ?? $data['account_name'] ?? "KORAK / {$fullName}");
-                $accountRef = (string) ($data['reference'] ?? $bankAccount['reference'] ?? ('va_'.uniqid()));
+                $accountRef = (string) ($data['reference'] ?? $bankAccount['reference'] ?? $data['uuid'] ?? ('va_'.uniqid()));
                 $status = (string) ($bankAccount['status'] ?? $data['status'] ?? 'active');
+                $providerAccountId = isset($data['id']) ? (string) $data['id'] : (isset($data['uuid']) ? (string) $data['uuid'] : (isset($data['account_id']) ? (string) $data['account_id'] : null));
+
+                // Save customer provider UUID if returned inline
+                if (isset($data['customer']) && is_array($data['customer'])) {
+                    $custUuid = (string) ($data['customer']['uuid'] ?? $data['customer']['id'] ?? '');
+                    if ($custUuid !== '' && ! $customer->provider_customer_id) {
+                        $customer->update(['provider_customer_id' => $custUuid]);
+                    }
+                }
 
                 /** @var CustomerVirtualAccount $account */
                 $account = CustomerVirtualAccount::updateOrCreate(
@@ -691,7 +721,7 @@ class FinityPayService
                     [
                         'wallet_id' => $wallet->id,
                         'provider' => 'finitypay',
-                        'provider_account_id' => isset($data['id']) ? (string) $data['id'] : (isset($data['account_id']) ? (string) $data['account_id'] : null),
+                        'provider_account_id' => $providerAccountId,
                         'account_reference' => $accountRef,
                         'bank_name' => $bankName,
                         'bank_code' => $bankCode,
