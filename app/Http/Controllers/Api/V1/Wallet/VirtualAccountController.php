@@ -144,7 +144,7 @@ class VirtualAccountController extends Controller
             $rawMessage = $result['message'] ?? 'Payment provider is currently undergoing maintenance. Please try again shortly.';
             $code = $result['code'] ?? 'provider_unavailable';
 
-            if (preg_match('/cURL|curl|resolve host|connection|timeout|failed to connect|undergoing maintenance/i', $rawMessage)) {
+            if (preg_match('/cURL|curl|resolve host|connection|timeout|failed to connect|undergoing maintenance|unauthorized|api key|invalid.*key/i', $rawMessage)) {
                 $rawMessage = 'Payment provider is currently undergoing maintenance. Please try again shortly.';
                 $code = 'provider_unavailable';
             }

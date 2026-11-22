@@ -531,12 +531,19 @@ class FinityPayService
                 Log::error('FinityPay returned 401 Unauthorized - API Secret Key is invalid or expired', [
                     'body' => $response->body(),
                 ]);
-            } else {
-                Log::warning('FinityPay createCustomer rejected by provider', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
+
+                return [
+                    'status' => 'error',
+                    'code' => 'provider_unavailable',
+                    'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+                    'temp_error' => $response->body() ?: ($response->json('message') ?? 'Unauthorized: Invalid API key.'),
+                ];
             }
+
+            Log::warning('FinityPay createCustomer rejected by provider', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
 
             return [
                 'status' => 'error',
@@ -713,12 +720,19 @@ class FinityPayService
                 Log::error('FinityPay returned 401 Unauthorized - API Secret Key is invalid or expired', [
                     'body' => $response->body(),
                 ]);
-            } else {
-                Log::warning('FinityPay createVirtualAccount rejected by provider', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
+
+                return [
+                    'status' => 'error',
+                    'code' => 'provider_unavailable',
+                    'message' => 'Payment provider is currently undergoing maintenance. Please try again shortly.',
+                    'temp_error' => $response->body() ?: ($response->json('message') ?? 'Unauthorized: Invalid API key.'),
+                ];
             }
+
+            Log::warning('FinityPay createVirtualAccount rejected by provider', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
 
             return [
                 'status' => 'error',
