@@ -154,10 +154,15 @@ class VirtualAccountController extends Controller
             ], 502);
         }
 
-        /** @var CustomerVirtualAccount $account */
+        /** @var CustomerVirtualAccount|null $account */
         $account = CustomerVirtualAccount::where('customer_id', $customer->id)
             ->where('status', 'active')
-            ->firstOrFail();
+            ->first();
+
+        if (! $account) {
+            /** @var CustomerVirtualAccount $account */
+            $account = CustomerVirtualAccount::where('customer_id', $customer->id)->firstOrFail();
+        }
 
         return ApiResponse::success(
             data: new CustomerVirtualAccountResource($account),

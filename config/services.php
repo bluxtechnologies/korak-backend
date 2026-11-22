@@ -36,14 +36,14 @@ return [
     ],
 
     'finitypay' => [
-        'env' => env('FINITYPAY_ENV', 'production'),
-        'base_url' => env('FINITYPAY_BASE_URL', env('COFINANCE_BASE_URL', 'https://api.finitypay.com.ng/v1')),
-        'business_id' => env('FINITYPAY_BUSINESS_ID', env('COFINANCE_BUSINESS_ID')),
-        'public_key' => env('FINITYPAY_PUBLIC_KEY', env('COFINANCE_PUBLIC_KEY')),
-        'secret_key' => env('FINITYPAY_SECRET_KEY', env('COFINANCE_SECRET_KEY')),
-        'webhook_secret' => env('FINITYPAY_WEBHOOK_SECRET', env('COFINANCE_WEBHOOK_SECRET')),
-        'skip_webhook_verify' => (bool) env('FINITYPAY_SKIP_WEBHOOK_VERIFY', false),
-        'mock' => (bool) env('MOCK_PAYMENT_PROVIDER', env('FINITYPAY_MOCK', false)),
+        'env' => env('FINITYPAY_ENV') ?: (env('COFINANCE_ENV') ?: 'production'),
+        'base_url' => env('FINITYPAY_BASE_URL') ?: (env('COFINANCE_BASE_URL') ?: 'https://api.finitypay.com.ng/v1'),
+        'business_id' => env('FINITYPAY_BUSINESS_ID') ?: env('COFINANCE_BUSINESS_ID'),
+        'public_key' => env('FINITYPAY_PUBLIC_KEY') ?: env('COFINANCE_PUBLIC_KEY'),
+        'secret_key' => env('FINITYPAY_SECRET_KEY') ?: env('COFINANCE_SECRET_KEY'),
+        'webhook_secret' => env('FINITYPAY_WEBHOOK_SECRET') ?: env('COFINANCE_WEBHOOK_SECRET'),
+        'skip_webhook_verify' => (bool) (env('FINITYPAY_SKIP_WEBHOOK_VERIFY') ?? env('COFINANCE_SKIP_WEBHOOK_VERIFY', false)),
+        'mock' => (bool) (env('MOCK_PAYMENT_PROVIDER') ?? env('FINITYPAY_MOCK', false)),
         'timeout' => 25,
     ],
 

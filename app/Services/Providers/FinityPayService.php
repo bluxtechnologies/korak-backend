@@ -584,19 +584,21 @@ class FinityPayService
         if ($this->isMock()) {
             $mockAccountNumber = '99'.str_pad((string) $customer->id, 8, '0', STR_PAD_LEFT);
             /** @var CustomerVirtualAccount $account */
-            $account = CustomerVirtualAccount::create([
-                'customer_id' => $customer->id,
-                'wallet_id' => $wallet->id,
-                'provider' => 'mock_provider',
-                'provider_account_id' => 'mock_'.Str::random(12),
-                'account_reference' => 'va_mock_'.Str::random(10),
-                'bank_name' => 'Wema Bank',
-                'bank_code' => '035',
-                'account_number' => $mockAccountNumber,
-                'account_name' => 'KORAK / '.strtoupper($fullName),
-                'status' => 'active',
-                'metadata' => ['mock' => true],
-            ]);
+            $account = CustomerVirtualAccount::updateOrCreate(
+                ['customer_id' => $customer->id],
+                [
+                    'wallet_id' => $wallet->id,
+                    'provider' => 'mock_provider',
+                    'provider_account_id' => 'mock_'.Str::random(12),
+                    'account_reference' => 'va_mock_'.Str::random(10),
+                    'bank_name' => 'Wema Bank',
+                    'bank_code' => '035',
+                    'account_number' => $mockAccountNumber,
+                    'account_name' => 'KORAK / '.strtoupper($fullName),
+                    'status' => 'active',
+                    'metadata' => ['mock' => true],
+                ]
+            );
 
             return [
                 'status' => 'success',
@@ -662,19 +664,21 @@ class FinityPayService
                 $status = (string) ($bankAccount['status'] ?? $data['status'] ?? 'active');
 
                 /** @var CustomerVirtualAccount $account */
-                $account = CustomerVirtualAccount::create([
-                    'customer_id' => $customer->id,
-                    'wallet_id' => $wallet->id,
-                    'provider' => 'finitypay',
-                    'provider_account_id' => isset($data['id']) ? (string) $data['id'] : (isset($data['account_id']) ? (string) $data['account_id'] : null),
-                    'account_reference' => $accountRef,
-                    'bank_name' => $bankName,
-                    'bank_code' => $bankCode,
-                    'account_number' => $accountNumber,
-                    'account_name' => $accountName,
-                    'status' => $status === 'active' ? 'active' : $status,
-                    'metadata' => $data,
-                ]);
+                $account = CustomerVirtualAccount::updateOrCreate(
+                    ['customer_id' => $customer->id],
+                    [
+                        'wallet_id' => $wallet->id,
+                        'provider' => 'finitypay',
+                        'provider_account_id' => isset($data['id']) ? (string) $data['id'] : (isset($data['account_id']) ? (string) $data['account_id'] : null),
+                        'account_reference' => $accountRef,
+                        'bank_name' => $bankName,
+                        'bank_code' => $bankCode,
+                        'account_number' => $accountNumber,
+                        'account_name' => $accountName,
+                        'status' => $status === 'active' ? 'active' : $status,
+                        'metadata' => $data,
+                    ]
+                );
 
                 return [
                     'status' => 'success',
