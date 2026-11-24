@@ -44,7 +44,7 @@ return [
         'webhook_secret' => env('FINITYPAY_WEBHOOK_SECRET') ?: env('COFINANCE_WEBHOOK_SECRET'),
         'skip_webhook_verify' => (bool) (env('FINITYPAY_SKIP_WEBHOOK_VERIFY') ?? env('COFINANCE_SKIP_WEBHOOK_VERIFY', false)),
         'mock' => (bool) (env('MOCK_PAYMENT_PROVIDER') ?? env('FINITYPAY_MOCK', false)),
-        'bank_partner' => env('FINITYPAY_BANK_PARTNER', 'wema'),
+        'bank_partner' => env('FINITYPAY_BANK_PARTNER'),
         'timeout' => 25,
     ],
 

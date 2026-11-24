@@ -659,24 +659,23 @@ class FinityPayService
             }
         }
 
-        $bankPartner = (string) config('services.finitypay.bank_partner', 'wema');
-        $firstName = $customer->first_name ?: $customer->username;
-        $lastName = $customer->last_name ?: $customer->username;
+        $bankPartner = config('services.finitypay.bank_partner');
+        $payload = [];
 
-        $payload = [
-            'bank_partner' => $bankPartner,
-            'first_name' => $firstName,
-            'last_name' => $lastName,
-            'name' => $fullName,
-            'customer_name' => $fullName,
-            'email' => $customer->email,
-            'customer_email' => $customer->email,
-            'phone' => $customerPhone,
-            'customer_phone' => $customerPhone,
-        ];
+        if (is_string($bankPartner) && trim($bankPartner) !== '') {
+            $payload['bank_partner'] = trim($bankPartner);
+        }
 
         if ($customer->provider_customer_id) {
             $payload['customer_id'] = $customer->provider_customer_id;
+            $payload['customer_name'] = $fullName;
+            $payload['customer_email'] = $customer->email;
+            $payload['customer_phone'] = $customerPhone;
+        } else {
+            $payload['first_name'] = $customer->first_name ?: $customer->username;
+            $payload['last_name'] = $customer->last_name ?: $customer->username;
+            $payload['email'] = $customer->email;
+            $payload['phone'] = $customerPhone;
         }
 
         try {
