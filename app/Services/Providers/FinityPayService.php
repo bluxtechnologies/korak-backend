@@ -692,10 +692,12 @@ class FinityPayService
             if ($response->successful()) {
                 /** @var array<string, mixed> $body */
                 $body = $response->json() ?? [];
-                /** @var array<string, mixed> $data */
+                /** @var array<array-key, mixed> $data */
                 $data = isset($body['data']) && is_array($body['data']) ? $body['data'] : $body;
                 if (isset($data[0]) && is_array($data[0])) {
-                    $data = $data[0];
+                    /** @var array<string, mixed> $firstItem */
+                    $firstItem = $data[0];
+                    $data = $firstItem;
                 }
                 $bankAccount = isset($data['bank_account']) && is_array($data['bank_account']) ? $data['bank_account'] : [];
 

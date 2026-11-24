@@ -24,7 +24,7 @@ class LoginLockoutService
      */
     public function isLocked(Customer $customer): bool
     {
-        return Cache::has($this->lockoutKey($customer));
+        return (bool) $customer->is_locked || Cache::has($this->lockoutKey($customer));
     }
 
     /**

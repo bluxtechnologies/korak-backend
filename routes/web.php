@@ -90,5 +90,8 @@ Route::prefix('admininistator')->group(function (): void {
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('admin.logout');
         Route::get('dashboard', [AdminDashboardController::class, 'index'])->name('admin.dashboard');
         Route::get('customers', [AdminCustomerController::class, 'index'])->name('admin.customers.index');
+        Route::get('customers/{customer}', [AdminCustomerController::class, 'show'])->name('admin.customers.show');
+        Route::post('customers/{customer}/toggle-lock', [AdminCustomerController::class, 'toggleLock'])->name('admin.customers.toggle-lock');
+        Route::delete('customers/{customer}', [AdminCustomerController::class, 'destroy'])->name('admin.customers.destroy');
     });
 });

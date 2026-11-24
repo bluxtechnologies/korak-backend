@@ -26,6 +26,9 @@ use Illuminate\Notifications\Notifiable;
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property bool $device_verification_enabled
+ * @property bool $is_locked
+ * @property Carbon|null $locked_at
+ * @property string|null $lock_reason
  * @property string|null $remember_token
  * @property Carbon $created_at
  * @property Carbon $updated_at
@@ -67,6 +70,9 @@ class Customer extends Authenticatable
         'email_verified_at',
         'password',
         'device_verification_enabled',
+        'is_locked',
+        'locked_at',
+        'lock_reason',
     ];
 
     /**
@@ -90,6 +96,8 @@ class Customer extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'device_verification_enabled' => 'boolean',
+            'is_locked' => 'boolean',
+            'locked_at' => 'datetime',
         ];
     }
 
