@@ -3,6 +3,7 @@
 use App\Enums\LedgerEntryType;
 use App\Models\BillOrder;
 use App\Models\Customer;
+use App\Models\CustomerVirtualAccount;
 use App\Notifications\WalletFundedNotification;
 use App\Services\Wallet\WalletService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -330,4 +331,126 @@ it('processes bill.failed webhook and automatically refunds customer wallet', fu
 
     // Customer wallet is automatically refunded back to 1,000,000 kobo!
     expect($wallet->fresh()->balance)->toBe(1000000);
+});
+
+it('processes live payment.received webhook with HMAC SHA256 and credits dedicated virtual account wallet', function (): void {
+    Notification::fake();
+
+    $customer = Customer::factory()->create([
+        'username' => 'obaseki',
+        'email' => 'collinsobaseki23@gmail.com',
+    ]);
+    $wallet = app(WalletService::class)->getOrCreateWallet($customer);
+
+    CustomerVirtualAccount::factory()->create([
+        'customer_id' => $customer->id,
+        'wallet_id' => $wallet->id,
+        'account_number' => '1299843895',
+        'account_reference' => 'MPVAT-P_20261125091839338_1265181300_DYH8V_gn8w6',
+        'bank_name' => 'Paga',
+    ]);
+
+    $payload = [
+        'id' => '8e5d7d24-5853-42d5-ad2c-97aadd1378ad',
+        'type' => 'payment.received',
+        'created_at' => '2026-11-25T08:18:56.670275Z',
+        'data' => [
+            'merchant' => [
+                'id' => '3241f123-f2c3-49e2-b880-8b788ff9733f',
+                'business_name' => 'Korak Digitals',
+            ],
+            'customer' => [
+                'uuid' => '950cbf0d-87b9-43f7-ad58-b6ac675abde2',
+                'name' => 'Obaseki Collins',
+                'email' => 'collinsobaseki23@gmail.com',
+                'phone' => '09017063088',
+            ],
+            'account' => [
+                'id' => 'c09181a9-ba54-4f8e-9205-53553c5189ee',
+                'reference' => 'MPVAT-P_20261125091839338_1265181300_DYH8V_gn8w6',
+                'account_number' => '1299843895',
+                'bank_name' => 'Paga',
+                'bank_code' => '100002',
+                'account_name' => 'Korak/ObasekiCollins',
+            ],
+            'transaction' => [
+                'id' => '2581a0e5-caab-44dc-8cbe-955c00eb3bf5',
+                'reference' => 'tx_3180ec26-93d0-434f-91ca-91ca819ce638',
+                'amount' => 100,
+                'fee' => 10,
+                'net_amount' => 90,
+                'currency' => 'NGN',
+                'status' => 'success',
+                'side' => 'credit',
+                'channel' => 'bank_transfer',
+                'settled_at' => '2026-11-25T08:18:53.000000Z',
+            ],
+        ],
+    ];
+
+    $rawContent = (string) json_encode($payload);
+    $secret = (string) config('services.finitypay.webhook_secret');
+    $sha256Signature = hash_hmac('sha256', $rawContent, $secret);
+
+    // Call webhook with X-FinityPay-Signature header
+    $response = $this->call(
+        method: 'POST',
+        uri: '/webhooks/cofinance',
+        server: [
+            'HTTP_X_FINITYPAY_SIGNATURE' => $sha256Signature,
+            'CONTENT_TYPE' => 'application/json',
+        ],
+        content: $rawContent
+    );
+
+    $response->assertOk()
+        ->assertJson([
+            'status' => 'success',
+            'message' => 'Webhook received.',
+        ]);
+
+    // Customer wallet is credited 100 NGN (10,000 kobo)
+    expect($wallet->fresh()->balance)->toBe(10000);
+});
+
+it('verifies webhook signature matching against cofinance_webhook_secret fallback when configured', function (): void {
+    Notification::fake();
+
+    config([
+        'services.finitypay.webhook_secret' => 'primary_secret',
+        'services.finitypay.cofinance_webhook_secret' => 'alternate_cofinance_secret',
+    ]);
+
+    $customer = Customer::factory()->create(['email' => 'altsecret@example.com']);
+    $wallet = app(WalletService::class)->getOrCreateWallet($customer);
+
+    $payload = [
+        'id' => 'evt_alt_secret_test',
+        'type' => 'payment.received',
+        'data' => [
+            'customer' => ['email' => 'altsecret@example.com'],
+            'transaction' => [
+                'reference' => 'TXN-ALT-001',
+                'amount' => 500,
+                'status' => 'success',
+            ],
+        ],
+    ];
+
+    $rawContent = (string) json_encode($payload);
+    // Sign with alternate secret
+    $signature = hash_hmac('sha256', $rawContent, 'alternate_cofinance_secret');
+
+    $response = $this->call(
+        method: 'POST',
+        uri: '/webhooks/cofinance',
+        server: [
+            'HTTP_X_WEBHOOK_SIGNATURE' => 'sha256='.$signature,
+            'CONTENT_TYPE' => 'application/json',
+        ],
+        content: $rawContent
+    );
+
+    $response->assertOk();
+    expect($wallet->fresh()->balance)->toBe(50000);
 });

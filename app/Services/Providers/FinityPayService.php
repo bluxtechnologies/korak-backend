@@ -66,6 +66,26 @@ class FinityPayService
     }
 
     /**
+     * Get all candidate webhook signing secrets configured in the system.
+     *
+     * @return list<string>
+     */
+    public function getAllWebhookSecrets(): array
+    {
+        $all = [
+            config('services.finitypay.webhook_secret'),
+            config('services.finitypay.cofinance_webhook_secret'),
+            config('services.finitypay.secret_key'),
+            config('services.finitypay.cofinance_secret_key'),
+        ];
+
+        /** @var list<string> $secrets */
+        $secrets = array_values(array_filter(array_unique($all), fn ($s): bool => is_string($s) && trim($s) !== ''));
+
+        return $secrets;
+    }
+
+    /**
      * Determine if mock payment provider mode is enabled.
      */
     public function isMock(): bool
@@ -865,70 +885,111 @@ class FinityPayService
      */
     public function verifyWebhookSignature(string $rawContent, ?string $signature, ?string $headerTimestamp = null): bool
     {
-        if (config('services.finitypay.skip_webhook_verify', false)) {
-            Log::info('FinityPay webhook signature verification bypassed via FINITYPAY_SKIP_WEBHOOK_VERIFY=true');
+        $skipVerify = (bool) config('services.finitypay.skip_webhook_verify', false);
+
+        if ($skipVerify) {
+            Log::info('FinityPay webhook signature verification bypassed via SKIP_WEBHOOK_VERIFY=true');
 
             return true;
         }
 
-        $secret = $this->getWebhookSecret();
-        if (! $secret || ! $signature) {
+        if (! $signature || trim($signature) === '') {
+            Log::warning('FinityPay webhook verification failed: No signature provided in request headers');
+
             return false;
         }
 
-        $algorithms = ['sha512', 'sha256'];
+        $secrets = $this->getAllWebhookSecrets();
+        if (empty($secrets)) {
+            Log::error('FinityPay webhook verification failed: No webhook signing secrets found in configuration');
 
-        foreach ($algorithms as $algo) {
-            // 1. Direct hex match
-            $computedHex = hash_hmac($algo, $rawContent, $secret);
-            if (hash_equals($computedHex, $signature)) {
+            return false;
+        }
+
+        $cleanSignature = trim((string) preg_replace('/^(sha256=|sha512=)/i', '', $signature));
+        $algorithms = ['sha256', 'sha512'];
+
+        foreach ($secrets as $secret) {
+            // Direct token match (in case provider sends secret token as verification header)
+            if (hash_equals($secret, $signature) || hash_equals($secret, $cleanSignature)) {
+                Log::info('FinityPay webhook signature matched via direct secret token equality');
+
                 return true;
             }
 
-            // 2. Direct base64 match
-            $computedB64 = base64_encode(hash_hmac($algo, $rawContent, $secret, true));
-            if (hash_equals($computedB64, $signature)) {
-                return true;
-            }
+            foreach ($algorithms as $algo) {
+                // 1. Direct hex match
+                $computedHex = hash_hmac($algo, $rawContent, $secret);
+                if (hash_equals($computedHex, $signature) || hash_equals($computedHex, $cleanSignature)) {
+                    Log::info("FinityPay webhook signature matched via {$algo} direct hex hash");
 
-            // 3. Timestamped format: t=...,v1=...
-            $timestamp = $headerTimestamp;
-            $v1Sig = null;
-
-            if (str_contains($signature, 't=') || str_contains($signature, 'v1=')) {
-                $parts = explode(',', $signature);
-                foreach ($parts as $part) {
-                    $pair = explode('=', trim($part), 2);
-                    if (count($pair) === 2) {
-                        $key = trim($pair[0]);
-                        $val = trim($pair[1]);
-                        if ($key === 't') {
-                            $timestamp = $val;
-                        } elseif ($key === 'v1') {
-                            $v1Sig = $val;
-                        }
-                    }
-                }
-            } else {
-                $v1Sig = $signature;
-            }
-
-            if ($v1Sig) {
-                if (hash_equals($computedB64, $v1Sig) || hash_equals($computedHex, $v1Sig)) {
                     return true;
                 }
 
-                if ($timestamp) {
-                    $signedPayload = $timestamp.'.'.$rawContent;
-                    $tB64 = base64_encode(hash_hmac($algo, $signedPayload, $secret, true));
-                    $tHex = hash_hmac($algo, $signedPayload, $secret);
+                // 2. Direct base64 match
+                $computedB64 = base64_encode(hash_hmac($algo, $rawContent, $secret, true));
+                if (hash_equals($computedB64, $signature) || hash_equals($computedB64, $cleanSignature)) {
+                    Log::info("FinityPay webhook signature matched via {$algo} direct base64 hash");
 
-                    if (hash_equals($tB64, $v1Sig) || hash_equals($tHex, $v1Sig)) {
+                    return true;
+                }
+
+                // 3. Timestamped format: t=...,v1=...
+                $timestamp = $headerTimestamp;
+                $v1Sig = $cleanSignature;
+
+                if (str_contains($signature, 't=') || str_contains($signature, 'v1=')) {
+                    $parts = explode(',', $signature);
+                    foreach ($parts as $part) {
+                        $pair = explode('=', trim($part), 2);
+                        if (count($pair) === 2) {
+                            $key = trim($pair[0]);
+                            $val = trim($pair[1]);
+                            if ($key === 't') {
+                                $timestamp = $val;
+                            } elseif ($key === 'v1') {
+                                $v1Sig = $val;
+                            }
+                        }
+                    }
+                }
+
+                if ($v1Sig !== '') {
+                    if (hash_equals($computedB64, $v1Sig) || hash_equals($computedHex, $v1Sig)) {
+                        Log::info("FinityPay webhook signature matched via {$algo} extracted signature hash");
+
                         return true;
+                    }
+
+                    if ($timestamp) {
+                        $signedPayloadFormats = [
+                            $timestamp.'.'.$rawContent,
+                            $rawContent.'.'.$timestamp,
+                            $timestamp.$rawContent,
+                        ];
+
+                        foreach ($signedPayloadFormats as $signedPayload) {
+                            $tB64 = base64_encode(hash_hmac($algo, $signedPayload, $secret, true));
+                            $tHex = hash_hmac($algo, $signedPayload, $secret);
+
+                            if (hash_equals($tB64, $v1Sig) || hash_equals($tHex, $v1Sig)) {
+                                Log::info("FinityPay webhook signature matched via {$algo} timestamped hash");
+
+                                return true;
+                            }
+                        }
                     }
                 }
             }
         }
+
+        Log::warning('FinityPay webhook signature mismatch after checking all candidate secrets and algorithms', [
+            'signature_received' => $signature,
+            'header_timestamp' => $headerTimestamp,
+            'raw_content_length' => strlen($rawContent),
+            'secrets_tried' => count($secrets),
+            'secret_prefixes' => array_map(fn (string $s): string => substr($s, 0, 5).'...', $secrets),
+        ]);
 
         return false;
     }
@@ -1081,12 +1142,21 @@ class FinityPayService
         // If not matched by reference, match by dedicated virtual account
         $accountNumber = (string) ($account['account_number'] ?? '');
         $accountRef = (string) ($account['reference'] ?? '');
+        $accountId = (string) ($account['id'] ?? '');
 
-        if (! $fundingRecord && ($accountNumber !== '' || $accountRef !== '')) {
+        if (! $fundingRecord && ($accountNumber !== '' || $accountRef !== '' || $accountId !== '')) {
             /** @var CustomerVirtualAccount|null $virtualAccount */
-            $virtualAccount = CustomerVirtualAccount::where('account_number', $accountNumber)
-                ->orWhere('account_reference', $accountRef)
-                ->first();
+            $virtualAccount = CustomerVirtualAccount::where(function ($q) use ($accountNumber, $accountRef, $accountId): void {
+                if ($accountNumber !== '') {
+                    $q->orWhere('account_number', $accountNumber);
+                }
+                if ($accountRef !== '') {
+                    $q->orWhere('account_reference', $accountRef);
+                }
+                if ($accountId !== '') {
+                    $q->orWhere('provider_account_id', $accountId);
+                }
+            })->first();
 
             if ($virtualAccount) {
                 $customer = $virtualAccount->customer;
@@ -1105,10 +1175,20 @@ class FinityPayService
             }
         }
 
-        // If not matched by account, match by customer email
-        if (! $fundingRecord && $customerEmail !== '') {
+        // If not matched by account, match by customer provider UUID or email
+        if (! $fundingRecord) {
+            $customerUuid = (string) ($customerData['uuid'] ?? $customerData['id'] ?? '');
             /** @var Customer|null $customer */
-            $customer = Customer::where('email', $customerEmail)->first();
+            $customer = null;
+
+            if ($customerUuid !== '') {
+                $customer = Customer::where('provider_customer_id', $customerUuid)->first();
+            }
+
+            if (! $customer && $customerEmail !== '') {
+                $customer = Customer::where('email', $customerEmail)->first();
+            }
+
             if ($customer) {
                 $wallet = $this->walletService->getOrCreateWallet($customer);
                 $fundingRecord = FundingRecord::create([
