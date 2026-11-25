@@ -232,7 +232,7 @@
                                 <tr>
                                     <th>Device Name</th>
                                     <th>IP Address</th>
-                                    <th>Last Seen</th>
+                                    <th>Last Active</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -243,7 +243,7 @@
                                             {{ $device->device_name ?: 'Unknown Device' }}
                                         </td>
                                         <td class="font-monospace text-muted">{{ $device->ip_address ?? '—' }}</td>
-                                        <td class="text-muted">{{ $device->last_seen_at ? $device->last_seen_at->diffForHumans() : '—' }}</td>
+                                        <td class="text-muted">{{ ($device->last_used_at ?? $device->updated_at)?->diffForHumans() ?? '—' }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>

@@ -2,6 +2,7 @@
 
 use App\Models\Admin;
 use App\Models\Customer;
+use App\Models\CustomerTrustedDevice;
 use App\Models\CustomerVirtualAccount;
 use App\Models\Wallet;
 use App\Services\Auth\LoginLockoutService;
@@ -110,6 +111,13 @@ it('allows admin to view single customer details profile page', function (): voi
         'bank_name' => 'Providus Bank',
         'account_number' => '9988776655',
     ]);
+    CustomerTrustedDevice::create([
+        'customer_id' => $customer->id,
+        'device_token_hash' => hash('sha256', 'sample-token'),
+        'device_name' => 'iPhone 15 Pro',
+        'ip_address' => '192.168.1.100',
+        'last_used_at' => now(),
+    ]);
 
     $response = $this->actingAs($admin, 'admin')->get(route('admin.customers.show', $customer));
 
@@ -119,7 +127,9 @@ it('allows admin to view single customer details profile page', function (): voi
         ->assertSee('profile@example.com')
         ->assertSee('Providus Bank')
         ->assertSee('9988776655')
-        ->assertSee('2,500.00');
+        ->assertSee('2,500.00')
+        ->assertSee('iPhone 15 Pro')
+        ->assertSee('192.168.1.100');
 });
 
 it('toggles customer lock status via ajax endpoint and blocks login', function (): void {

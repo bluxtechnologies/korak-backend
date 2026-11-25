@@ -76,4 +76,12 @@ class CustomerTrustedDevice extends Model
     {
         return $this->belongsTo(Customer::class);
     }
+
+    /**
+     * Compatibility accessor for last_seen_at.
+     */
+    public function getLastSeenAtAttribute(): ?Carbon
+    {
+        return $this->last_used_at ?? $this->updated_at;
+    }
 }

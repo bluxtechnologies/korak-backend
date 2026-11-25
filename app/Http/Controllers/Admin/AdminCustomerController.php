@@ -75,7 +75,7 @@ class AdminCustomerController extends Controller
         $customer->load([
             'wallet.ledgerEntries' => fn ($q) => $q->latest('id')->limit(10),
             'virtualAccount',
-            'trustedDevices' => fn ($q) => $q->latest('last_seen_at')->limit(10),
+            'trustedDevices' => fn ($q) => $q->latest('id')->limit(10),
             'supportTickets' => fn ($q) => $q->latest('id')->limit(5),
         ]);
 
