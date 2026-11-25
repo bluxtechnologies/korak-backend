@@ -34,11 +34,17 @@ class FinityPayWebhookController extends Controller
         $msgId = $this->extractMsgId($request, $allHeaders);
         $rawContent = $request->getContent() ?: (string) file_get_contents('php://input');
 
+        if (! $timestamp && $signature && str_contains($signature, 't=')) {
+            if (preg_match('/(?:^|,)t=(\d+)/', $signature, $matches)) {
+                $timestamp = $matches[1];
+            }
+        }
+
         Log::info('Incoming FinityPay webhook received', [
             'method' => $request->method(),
             'path' => $request->path(),
             'has_signature' => ! empty($signature),
-            'signature_preview' => $signature ? substr($signature, 0, 16).'...' : null,
+            'full_signature' => $signature,
             'header_timestamp' => $timestamp,
             'msg_id' => $msgId,
             'header_keys' => array_keys($allHeaders),
@@ -58,10 +64,12 @@ class FinityPayWebhookController extends Controller
                 'code' => 'invalid_webhook_signature',
                 'message' => 'Invalid webhook signature.',
                 'diagnostic' => [
-                    'version' => '2026.11.25-svix-sha512',
+                    'version' => '2026.11.25.v5',
                     'signature_found' => ! empty($signature),
-                    'signature_length' => $signature ? strlen($signature) : 0,
-                    'signature_preview' => $signature ? substr($signature, 0, 16).'...' : null,
+                    'full_signature' => $signature,
+                    'extracted_timestamp' => $timestamp,
+                    'extracted_msg_id' => $msgId,
+                    'raw_content_length' => strlen($rawContent),
                     'header_keys_detected' => array_keys($allHeaders),
                     'secrets_configured' => count($this->finityPayService->getAllWebhookSecrets()),
                 ],
@@ -241,12 +249,13 @@ class FinityPayWebhookController extends Controller
     protected function extractMsgId(Request $request, array $allHeaders): ?string
     {
         $idHeaders = [
+            'x-cofinance-event-id',
+            'x-cofinance-id',
+            'x-finity-event-id',
             'webhook-id',
             'svix-id',
             'x-webhook-id',
             'x-svix-id',
-            'x-cofinance-id',
-            'x-finity-id',
             'x-request-id',
         ];
 

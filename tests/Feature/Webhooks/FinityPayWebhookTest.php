@@ -565,6 +565,70 @@ it('verifies webhook signature when FinityPay sends space-delimited svix signatu
     expect($wallet->fresh()->balance)->toBe(10000);
 });
 
+it('verifies live payment.received webhook with X-CoFinance-Signature t=...,v1=... and X-CoFinance-Event-Id header', function (): void {
+    Notification::fake();
+
+    $secret = 'whsec_UDkSqa5IJ9PqzLiEKvNf8QA79VCDYgXWVwylxZ73';
+    config([
+        'services.finitypay.webhook_secret' => $secret,
+    ]);
+
+    $customer = Customer::factory()->create(['email' => 'frankutoo518@gmail.com']);
+    $wallet = app(WalletService::class)->getOrCreateWallet($customer);
+
+    $eventId = '216aad7a-6164-4ecd-8a96-8cbd939668aa';
+    $timestamp = '1795639719';
+
+    $payload = [
+        'id' => $eventId,
+        'type' => 'payment.received',
+        'created_at' => '2026-11-25T18:24:27.718897Z',
+        'data' => [
+            'customer' => [
+                'email' => 'frankutoo518@gmail.com',
+                'name' => 'Deborah Utoo',
+            ],
+            'account' => [
+                'account_number' => '3138435373',
+                'bank_name' => 'Paga',
+            ],
+            'transaction' => [
+                'reference' => 'tx_e9e208ab-8eed-4ae2-8988-d009bcf4afa7',
+                'amount' => 500,
+                'status' => 'success',
+            ],
+        ],
+    ];
+
+    $rawContent = (string) json_encode($payload);
+
+    // Test with stripped secret and timestamped format t={ts}.{body}
+    $toSign = "{$timestamp}.{$rawContent}";
+    $b64Sig = base64_encode(hash_hmac('sha256', $toSign, substr($secret, 6), true));
+    $sigHeader = "t={$timestamp},v1={$b64Sig}";
+
+    $response = $this->call(
+        method: 'POST',
+        uri: '/webhooks/cofinance',
+        server: [
+            'HTTP_X_COFINANCE_EVENT' => 'payment.received',
+            'HTTP_X_COFINANCE_EVENT_ID' => $eventId,
+            'HTTP_X_COFINANCE_TIMESTAMP' => $timestamp,
+            'HTTP_X_COFINANCE_SIGNATURE' => $sigHeader,
+            'CONTENT_TYPE' => 'application/json',
+        ],
+        content: $rawContent
+    );
+
+    $response->assertOk()
+        ->assertJson([
+            'status' => 'success',
+            'message' => 'Webhook received.',
+        ]);
+
+    expect($wallet->fresh()->balance)->toBe(50000); // 500 NGN = 50,000 kobo
+});
+
 it('responds to GET request on webhook endpoint with health status and version', function (): void {
     $response = $this->get('/webhooks/cofinance');
 

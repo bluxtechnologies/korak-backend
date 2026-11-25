@@ -995,46 +995,64 @@ class FinityPayService
         $timestamps = array_values(array_unique(array_filter($extractedTimestamps, fn (string $ts): bool => $ts !== '')));
 
         // 3. Construct all signed payload candidates
-        $signedPayloads = [];
-
-        // Svix Standard: "${msgId}.${timestamp}.${rawContent}"
-        foreach ($msgIds as $id) {
-            foreach ($timestamps as $ts) {
-                $signedPayloads[] = "{$id}.{$ts}.{$rawContent}";
-                $signedPayloads[] = "{$ts}.{$id}.{$rawContent}";
-            }
-        }
-
-        // Timestamped formats: "${timestamp}.${rawContent}"
-        foreach ($timestamps as $ts) {
-            $signedPayloads[] = "{$ts}.{$rawContent}";
-            $signedPayloads[] = "{$rawContent}.{$ts}";
-            $signedPayloads[] = "{$ts}{$rawContent}";
-        }
-
-        // MsgId + rawContent
-        foreach ($msgIds as $id) {
-            $signedPayloads[] = "{$id}.{$rawContent}";
-        }
-
-        // Raw content variations (handling line endings CRLF vs LF and compact JSON)
-        $signedPayloads[] = $rawContent;
-        $signedPayloads[] = trim($rawContent);
-        $signedPayloads[] = str_replace("\r\n", "\n", $rawContent);
-        $signedPayloads[] = trim(str_replace("\r\n", "\n", $rawContent));
+        $rawVariations = [
+            $rawContent,
+            trim($rawContent),
+            str_replace("\r\n", "\n", $rawContent),
+            trim(str_replace("\r\n", "\n", $rawContent)),
+        ];
 
         if (is_array($decodedJson)) {
             $compactJson = json_encode($decodedJson);
             if ($compactJson !== false) {
-                $signedPayloads[] = $compactJson;
+                $rawVariations[] = $compactJson;
             }
             $unescapedJson = json_encode($decodedJson, JSON_UNESCAPED_SLASHES);
             if ($unescapedJson !== false) {
-                $signedPayloads[] = $unescapedJson;
+                $rawVariations[] = $unescapedJson;
+            }
+            $unescapedUnicodeJson = json_encode($decodedJson, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if ($unescapedUnicodeJson !== false) {
+                $rawVariations[] = $unescapedUnicodeJson;
             }
         }
 
-        $signedPayloads = array_values(array_unique(array_filter($signedPayloads, fn (string $p): bool => $p !== '')));
+        $rawVariations = array_values(array_unique(array_filter($rawVariations, fn (string $r): bool => $r !== '')));
+
+        $signedPayloads = [];
+
+        foreach ($rawVariations as $rawVariant) {
+            // Svix Standard: "${msgId}.${timestamp}.${rawContent}"
+            foreach ($msgIds as $id) {
+                foreach ($timestamps as $ts) {
+                    $signedPayloads[] = "{$id}.{$ts}.{$rawVariant}";
+                    $signedPayloads[] = "{$ts}.{$id}.{$rawVariant}";
+                    $signedPayloads[] = "{$id}:{$ts}:{$rawVariant}";
+                }
+            }
+
+            // Timestamped formats: "${timestamp}.${rawContent}" (Stripe / CoFinance standard)
+            foreach ($timestamps as $ts) {
+                $signedPayloads[] = "{$ts}.{$rawVariant}";
+                $signedPayloads[] = "{$rawVariant}.{$ts}";
+                $signedPayloads[] = "{$ts}:{$rawVariant}";
+                $signedPayloads[] = "{$ts},{$rawVariant}";
+                $signedPayloads[] = "{$ts}\n{$rawVariant}";
+                $signedPayloads[] = "{$ts}{$rawVariant}";
+                $signedPayloads[] = "t={$ts}.{$rawVariant}";
+                $signedPayloads[] = "t={$ts},{$rawVariant}";
+            }
+
+            // MsgId + rawContent
+            foreach ($msgIds as $id) {
+                $signedPayloads[] = "{$id}.{$rawVariant}";
+            }
+
+            // Raw content alone
+            $signedPayloads[] = $rawVariant;
+        }
+
+        $signedPayloads = array_values(array_unique($signedPayloads));
 
         // 4. Test each secret and its key variants
         foreach ($secrets as $secret) {
@@ -1048,9 +1066,11 @@ class FinityPayService
             }
 
             $keyVariants = [];
-            // If secret starts with 'whsec_', standard Svix uses base64_decode of the suffix!
+            // If secret starts with 'whsec_', test stripped suffix as raw string AND base64_decode!
             if (str_starts_with($secret, 'whsec_')) {
-                $decoded = base64_decode(substr($secret, 6), true);
+                $suffix = substr($secret, 6);
+                $keyVariants[] = $suffix;
+                $decoded = base64_decode($suffix, true);
                 if ($decoded !== false && $decoded !== '') {
                     $keyVariants[] = $decoded;
                 }
