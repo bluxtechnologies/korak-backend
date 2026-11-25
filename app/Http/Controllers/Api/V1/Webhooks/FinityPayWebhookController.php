@@ -87,6 +87,21 @@ class FinityPayWebhookController extends Controller
     }
 
     /**
+     * Diagnostic ping endpoint to confirm webhook listener health, version, and configuration.
+     */
+    public function ping(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'ok',
+            'message' => 'FinityPay / CoFinance webhook listener is active and ready.',
+            'version' => '2026.11.25.v4',
+            'secrets_loaded' => count($this->finityPayService->getAllWebhookSecrets()),
+            'skip_verify' => (bool) config('services.finitypay.skip_webhook_verify', false),
+            'server_time' => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
      * Gather all incoming request headers from getallheaders(), apache_request_headers(),
      * Symfony request headers, and $_SERVER.
      *

@@ -564,3 +564,13 @@ it('verifies webhook signature when FinityPay sends space-delimited svix signatu
     $response->assertOk();
     expect($wallet->fresh()->balance)->toBe(10000);
 });
+
+it('responds to GET request on webhook endpoint with health status and version', function (): void {
+    $response = $this->get('/webhooks/cofinance');
+
+    $response->assertOk()
+        ->assertJson([
+            'status' => 'ok',
+            'version' => '2026.11.25.v4',
+        ]);
+});

@@ -22,6 +22,8 @@ Route::get('/', function () {
 // FinityPay / CoFinance Webhook endpoints at root (matching dashboard configuration)
 Route::post('webhooks/cofinance', FinityPayWebhookController::class)->name('webhooks.cofinance.root');
 Route::post('webhooks/finitypay', FinityPayWebhookController::class)->name('webhooks.finitypay.root');
+Route::get('webhooks/cofinance', [FinityPayWebhookController::class, 'ping'])->name('webhooks.cofinance.ping');
+Route::get('webhooks/finitypay', [FinityPayWebhookController::class, 'ping'])->name('webhooks.finitypay.ping');
 
 // Developer local mail previews (Visually inspect templates in browser)
 if (app()->environment('local')) {

@@ -1017,15 +1017,30 @@ class FinityPayService
             $signedPayloads[] = "{$id}.{$rawContent}";
         }
 
-        // Raw content alone
+        // Raw content variations (handling line endings CRLF vs LF and compact JSON)
         $signedPayloads[] = $rawContent;
-        $signedPayloads = array_values(array_unique($signedPayloads));
+        $signedPayloads[] = trim($rawContent);
+        $signedPayloads[] = str_replace("\r\n", "\n", $rawContent);
+        $signedPayloads[] = trim(str_replace("\r\n", "\n", $rawContent));
+
+        if (is_array($decodedJson)) {
+            $compactJson = json_encode($decodedJson);
+            if ($compactJson !== false) {
+                $signedPayloads[] = $compactJson;
+            }
+            $unescapedJson = json_encode($decodedJson, JSON_UNESCAPED_SLASHES);
+            if ($unescapedJson !== false) {
+                $signedPayloads[] = $unescapedJson;
+            }
+        }
+
+        $signedPayloads = array_values(array_unique(array_filter($signedPayloads, fn (string $p): bool => $p !== '')));
 
         // 4. Test each secret and its key variants
         foreach ($secrets as $secret) {
             // Direct token match (in case provider sends secret token as verification header)
             foreach ($signatureCandidates as $candidate) {
-                if (hash_equals($secret, $candidate)) {
+                if (hash_equals($secret, $candidate) || hash_equals(strtolower($secret), strtolower($candidate))) {
                     Log::info('FinityPay webhook signature matched via direct secret token equality');
 
                     return true;
@@ -1054,7 +1069,11 @@ class FinityPayService
                         $b64Hash = base64_encode($rawHash);
 
                         foreach ($signatureCandidates as $candidate) {
-                            if (hash_equals($b64Hash, $candidate) || hash_equals($hexHash, $candidate)) {
+                            if (
+                                hash_equals($b64Hash, $candidate) ||
+                                hash_equals($hexHash, $candidate) ||
+                                hash_equals(strtolower($hexHash), strtolower($candidate))
+                            ) {
                                 Log::info('FinityPay webhook signature verified successfully', [
                                     'algorithm' => $algo,
                                     'secret_prefix' => substr($secret, 0, 8).'...',
