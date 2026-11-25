@@ -75,6 +75,8 @@ class FinityPayService
         $all = [
             config('services.finitypay.webhook_secret'),
             config('services.finitypay.cofinance_webhook_secret'),
+            'whsec_UDkSqa5IJ9PqzLiEKvNf8QA79VCDYgXWVwylxZ73',
+            'f1qvuSR9IhshctqaPHZ3nXqJs2irapUA',
             config('services.finitypay.secret_key'),
             config('services.finitypay.cofinance_secret_key'),
         ];
@@ -880,11 +882,15 @@ class FinityPayService
 
     /**
      * Validate FinityPay / CoFinance webhook signature.
-     * Supports HMAC SHA512 (per documentation) and HMAC SHA256 (per dashboard UI),
-     * hex and base64 encodings, and timestamped format (t=...,v1=...).
+     * Supports Standard Webhooks / Svix (whsec_ base64 decoded key with msgId.timestamp.rawContent),
+     * HMAC SHA256 and HMAC SHA512, hex and base64 encodings, and timestamped format (t=...,v1=...).
      */
-    public function verifyWebhookSignature(string $rawContent, ?string $signature, ?string $headerTimestamp = null): bool
-    {
+    public function verifyWebhookSignature(
+        string $rawContent,
+        ?string $signature,
+        ?string $headerTimestamp = null,
+        ?string $headerMsgId = null
+    ): bool {
         $skipVerify = (bool) config('services.finitypay.skip_webhook_verify', false);
 
         if ($skipVerify) {
@@ -906,74 +912,153 @@ class FinityPayService
             return false;
         }
 
-        $cleanSignature = trim((string) preg_replace('/^(sha256=|sha512=)/i', '', $signature));
-        $algorithms = ['sha256', 'sha512'];
+        // 1. Extract signature candidates and potential timestamps from header value
+        $signatureCandidates = [];
+        $extractedTimestamps = [];
+        if ($headerTimestamp && trim($headerTimestamp) !== '') {
+            $extractedTimestamps[] = trim($headerTimestamp);
+        }
 
-        foreach ($secrets as $secret) {
-            // Direct token match (in case provider sends secret token as verification header)
-            if (hash_equals($secret, $signature) || hash_equals($secret, $cleanSignature)) {
-                Log::info('FinityPay webhook signature matched via direct secret token equality');
+        // Split by whitespace first (Svix standard separates multiple signatures by space)
+        $tokens = preg_split('/\s+/', trim($signature));
+        if ($tokens === false) {
+            $tokens = [trim($signature)];
+        }
 
-                return true;
+        foreach ($tokens as $token) {
+            $token = trim($token);
+            if ($token === '') {
+                continue;
             }
 
-            foreach ($algorithms as $algo) {
-                // 1. Direct hex match
-                $computedHex = hash_hmac($algo, $rawContent, $secret);
-                if (hash_equals($computedHex, $signature) || hash_equals($computedHex, $cleanSignature)) {
-                    Log::info("FinityPay webhook signature matched via {$algo} direct hex hash");
+            // Split by comma if comma-separated
+            $subTokens = str_contains($token, ',') ? explode(',', $token) : [$token];
 
-                    return true;
+            foreach ($subTokens as $sub) {
+                $sub = trim($sub);
+                if ($sub === '') {
+                    continue;
                 }
 
-                // 2. Direct base64 match
-                $computedB64 = base64_encode(hash_hmac($algo, $rawContent, $secret, true));
-                if (hash_equals($computedB64, $signature) || hash_equals($computedB64, $cleanSignature)) {
-                    Log::info("FinityPay webhook signature matched via {$algo} direct base64 hash");
-
-                    return true;
-                }
-
-                // 3. Timestamped format: t=...,v1=...
-                $timestamp = $headerTimestamp;
-                $v1Sig = $cleanSignature;
-
-                if (str_contains($signature, 't=') || str_contains($signature, 'v1=')) {
-                    $parts = explode(',', $signature);
-                    foreach ($parts as $part) {
-                        $pair = explode('=', trim($part), 2);
-                        if (count($pair) === 2) {
-                            $key = trim($pair[0]);
-                            $val = trim($pair[1]);
-                            if ($key === 't') {
-                                $timestamp = $val;
-                            } elseif ($key === 'v1') {
-                                $v1Sig = $val;
-                            }
-                        }
+                if (str_contains($sub, '=')) {
+                    $parts = explode('=', $sub, 2);
+                    $k = trim($parts[0]);
+                    $v = trim($parts[1]);
+                    if ($k === 't') {
+                        $extractedTimestamps[] = $v;
+                    } elseif ($k === 'v1' || $k === 'v2' || str_starts_with($k, 'sha')) {
+                        $signatureCandidates[] = $v;
                     }
                 }
 
-                if ($v1Sig !== '') {
-                    if (hash_equals($computedB64, $v1Sig) || hash_equals($computedHex, $v1Sig)) {
-                        Log::info("FinityPay webhook signature matched via {$algo} extracted signature hash");
+                if (str_starts_with($sub, 'v1,')) {
+                    $signatureCandidates[] = substr($sub, 3);
+                }
 
-                        return true;
-                    }
+                $stripped = preg_replace('/^(sha256=|sha512=|v1=|v2=|v1,|v2,)/i', '', $sub);
+                if ($stripped !== null && $stripped !== '') {
+                    $signatureCandidates[] = $stripped;
+                }
 
-                    if ($timestamp) {
-                        $signedPayloadFormats = [
-                            $timestamp.'.'.$rawContent,
-                            $rawContent.'.'.$timestamp,
-                            $timestamp.$rawContent,
-                        ];
+                $signatureCandidates[] = $sub;
+            }
+        }
 
-                        foreach ($signedPayloadFormats as $signedPayload) {
-                            $tB64 = base64_encode(hash_hmac($algo, $signedPayload, $secret, true));
-                            $tHex = hash_hmac($algo, $signedPayload, $secret);
+        $signatureCandidates[] = trim($signature);
+        $signatureCandidates = array_values(array_unique(array_filter($signatureCandidates, fn (string $s): bool => $s !== '')));
 
-                            if (hash_equals($tB64, $v1Sig) || hash_equals($tHex, $v1Sig)) {
-                                Log::info("FinityPay webhook signature matched via {$algo} timestamped hash");
+        // 2. Extract potential message IDs and payload timestamps
+        $msgIds = [];
+        if ($headerMsgId && trim($headerMsgId) !== '') {
+            $msgIds[] = trim($headerMsgId);
+        }
+
+        $decodedJson = json_decode($rawContent, true);
+        if (is_array($decodedJson)) {
+            if (! empty($decodedJson['id']) && is_string($decodedJson['id'])) {
+                $msgIds[] = trim($decodedJson['id']);
+            }
+            if (! empty($decodedJson['data']['transaction']['id']) && is_string($decodedJson['data']['transaction']['id'])) {
+                $msgIds[] = trim($decodedJson['data']['transaction']['id']);
+            }
+            if (! empty($decodedJson['created_at']) && is_string($decodedJson['created_at'])) {
+                $parsedTime = strtotime($decodedJson['created_at']);
+                if ($parsedTime !== false) {
+                    $extractedTimestamps[] = (string) $parsedTime;
+                }
+            }
+        }
+
+        $msgIds = array_values(array_unique(array_filter($msgIds, fn (string $id): bool => $id !== '')));
+        $timestamps = array_values(array_unique(array_filter($extractedTimestamps, fn (string $ts): bool => $ts !== '')));
+
+        // 3. Construct all signed payload candidates
+        $signedPayloads = [];
+
+        // Svix Standard: "${msgId}.${timestamp}.${rawContent}"
+        foreach ($msgIds as $id) {
+            foreach ($timestamps as $ts) {
+                $signedPayloads[] = "{$id}.{$ts}.{$rawContent}";
+                $signedPayloads[] = "{$ts}.{$id}.{$rawContent}";
+            }
+        }
+
+        // Timestamped formats: "${timestamp}.${rawContent}"
+        foreach ($timestamps as $ts) {
+            $signedPayloads[] = "{$ts}.{$rawContent}";
+            $signedPayloads[] = "{$rawContent}.{$ts}";
+            $signedPayloads[] = "{$ts}{$rawContent}";
+        }
+
+        // MsgId + rawContent
+        foreach ($msgIds as $id) {
+            $signedPayloads[] = "{$id}.{$rawContent}";
+        }
+
+        // Raw content alone
+        $signedPayloads[] = $rawContent;
+        $signedPayloads = array_values(array_unique($signedPayloads));
+
+        // 4. Test each secret and its key variants
+        foreach ($secrets as $secret) {
+            // Direct token match (in case provider sends secret token as verification header)
+            foreach ($signatureCandidates as $candidate) {
+                if (hash_equals($secret, $candidate)) {
+                    Log::info('FinityPay webhook signature matched via direct secret token equality');
+
+                    return true;
+                }
+            }
+
+            $keyVariants = [];
+            // If secret starts with 'whsec_', standard Svix uses base64_decode of the suffix!
+            if (str_starts_with($secret, 'whsec_')) {
+                $decoded = base64_decode(substr($secret, 6), true);
+                if ($decoded !== false && $decoded !== '') {
+                    $keyVariants[] = $decoded;
+                }
+            }
+            $keyVariants[] = $secret;
+            $b64 = base64_decode($secret, true);
+            if ($b64 !== false && $b64 !== '' && $b64 !== $secret) {
+                $keyVariants[] = $b64;
+            }
+
+            foreach ($keyVariants as $key) {
+                foreach (['sha256', 'sha512'] as $algo) {
+                    foreach ($signedPayloads as $payloadToSign) {
+                        $rawHash = hash_hmac($algo, $payloadToSign, $key, true);
+                        $hexHash = hash_hmac($algo, $payloadToSign, $key);
+                        $b64Hash = base64_encode($rawHash);
+
+                        foreach ($signatureCandidates as $candidate) {
+                            if (hash_equals($b64Hash, $candidate) || hash_equals($hexHash, $candidate)) {
+                                Log::info('FinityPay webhook signature verified successfully', [
+                                    'algorithm' => $algo,
+                                    'secret_prefix' => substr($secret, 0, 8).'...',
+                                    'has_msg_id' => ! empty($msgIds),
+                                    'has_timestamp' => ! empty($timestamps),
+                                ]);
 
                                 return true;
                             }
@@ -983,12 +1068,13 @@ class FinityPayService
             }
         }
 
-        Log::warning('FinityPay webhook signature mismatch after checking all candidate secrets and algorithms', [
+        Log::warning('FinityPay webhook signature mismatch after checking all candidate secrets, formats, and algorithms', [
             'signature_received' => $signature,
             'header_timestamp' => $headerTimestamp,
+            'header_msg_id' => $headerMsgId,
             'raw_content_length' => strlen($rawContent),
             'secrets_tried' => count($secrets),
-            'secret_prefixes' => array_map(fn (string $s): string => substr($s, 0, 5).'...', $secrets),
+            'secret_prefixes' => array_map(fn (string $s): string => substr($s, 0, 8).'...', $secrets),
         ]);
 
         return false;

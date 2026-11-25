@@ -454,3 +454,113 @@ it('verifies webhook signature matching against cofinance_webhook_secret fallbac
     $response->assertOk();
     expect($wallet->fresh()->balance)->toBe(50000);
 });
+
+it('verifies standard svix webhook signature using whsec_ prefix and base64 decoded key with msgId and timestamp', function (): void {
+    Notification::fake();
+
+    $secret = 'whsec_UDkSqa5IJ9PqzLiEKvNf8QA79VCDYgXWVwylxZ73';
+    config([
+        'services.finitypay.webhook_secret' => $secret,
+    ]);
+
+    $customer = Customer::factory()->create(['email' => 'svix@example.com']);
+    $wallet = app(WalletService::class)->getOrCreateWallet($customer);
+
+    $msgId = 'msg_test_svix_001';
+    $timestamp = (string) time();
+
+    $payload = [
+        'id' => $msgId,
+        'type' => 'payment.received',
+        'data' => [
+            'customer' => ['email' => 'svix@example.com'],
+            'transaction' => [
+                'reference' => 'TXN-SVIX-001',
+                'amount' => 750,
+                'status' => 'success',
+            ],
+        ],
+    ];
+
+    $rawContent = (string) json_encode($payload);
+
+    // Official Svix specification:
+    // 1. key = base64_decode(substr(secret, 6))
+    // 2. signedContent = "${msgId}.${timestamp}.${rawContent}"
+    // 3. signature = "v1," . base64_encode(hash_hmac('sha256', $signedContent, $key, true))
+    $keyBytes = (string) base64_decode(substr($secret, 6), true);
+    $signedContent = "{$msgId}.{$timestamp}.{$rawContent}";
+    $b64Sig = base64_encode(hash_hmac('sha256', $signedContent, $keyBytes, true));
+    $svixHeader = "v1,{$b64Sig}";
+
+    $response = $this->call(
+        method: 'POST',
+        uri: '/webhooks/cofinance',
+        server: [
+            'HTTP_WEBHOOK_ID' => $msgId,
+            'HTTP_WEBHOOK_TIMESTAMP' => $timestamp,
+            'HTTP_WEBHOOK_SIGNATURE' => $svixHeader,
+            'CONTENT_TYPE' => 'application/json',
+        ],
+        content: $rawContent
+    );
+
+    $response->assertOk()
+        ->assertJson([
+            'status' => 'success',
+            'message' => 'Webhook received.',
+        ]);
+
+    expect($wallet->fresh()->balance)->toBe(75000); // 750 NGN = 75,000 kobo
+});
+
+it('verifies webhook signature when FinityPay sends space-delimited svix signatures or svix headers', function (): void {
+    Notification::fake();
+
+    $secret = 'whsec_UDkSqa5IJ9PqzLiEKvNf8QA79VCDYgXWVwylxZ73';
+    config([
+        'services.finitypay.webhook_secret' => $secret,
+    ]);
+
+    $customer = Customer::factory()->create(['email' => 'svix2@example.com']);
+    $wallet = app(WalletService::class)->getOrCreateWallet($customer);
+
+    $msgId = '8e5d7d24-5853-42d5-ad2c-97aadd1378ad';
+    $timestamp = '1732522736';
+
+    $payload = [
+        'id' => $msgId,
+        'type' => 'payment.received',
+        'data' => [
+            'customer' => ['email' => 'svix2@example.com'],
+            'transaction' => [
+                'reference' => 'TXN-SVIX-002',
+                'amount' => 100,
+                'status' => 'success',
+            ],
+        ],
+    ];
+
+    $rawContent = (string) json_encode($payload);
+    $keyBytes = (string) base64_decode(substr($secret, 6), true);
+    $signedContent = "{$msgId}.{$timestamp}.{$rawContent}";
+    $sig1 = base64_encode(hash_hmac('sha256', $signedContent, $keyBytes, true));
+
+    // Space-delimited signatures with rotated or dummy signature
+    $headerVal = "v1,dummySignature v1,{$sig1}";
+
+    $response = $this->call(
+        method: 'POST',
+        uri: '/webhooks/cofinance',
+        server: [
+            'HTTP_SVIX_ID' => $msgId,
+            'HTTP_SVIX_TIMESTAMP' => $timestamp,
+            'HTTP_SVIX_SIGNATURE' => $headerVal,
+            'CONTENT_TYPE' => 'application/json',
+        ],
+        content: $rawContent
+    );
+
+    $response->assertOk();
+    expect($wallet->fresh()->balance)->toBe(10000);
+});
