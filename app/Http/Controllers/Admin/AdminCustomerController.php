@@ -2,13 +2,29 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\LedgerDirection;
+use App\Enums\LedgerEntryType;
+use App\Enums\TicketStatus;
+use App\Exceptions\InsufficientBalanceException;
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
+use App\Models\BillOrder;
 use App\Models\Customer;
+use App\Models\LedgerEntry;
+use App\Models\SupportTicket;
+use App\Models\SupportTicketMessage;
+use App\Notifications\SupportTicketReplyNotification;
+use App\Notifications\WalletAdjustmentNotification;
 use App\Services\Auth\LoginLockoutService;
+use App\Services\Wallet\WalletService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Throwable;
 
 class AdminCustomerController extends Controller
 {
@@ -48,7 +64,6 @@ class AdminCustomerController extends Controller
             $query->where('is_locked', false);
         }
 
-        // When DataTables is active, fetch all filtered records or a generous collection for table manipulation
         $customers = $query->paginate(25)->withQueryString();
 
         $stats = [
@@ -68,7 +83,7 @@ class AdminCustomerController extends Controller
     }
 
     /**
-     * Display customer details profile.
+     * Display customer details profile (Overview).
      */
     public function show(Customer $customer, Request $request): View
     {
@@ -77,12 +92,487 @@ class AdminCustomerController extends Controller
             'virtualAccount',
             'trustedDevices' => fn ($q) => $q->latest('id')->limit(10),
             'supportTickets' => fn ($q) => $q->latest('id')->limit(5),
+            'billOrders' => fn ($q) => $q->latest('id')->limit(5),
         ]);
 
         return view('admin.customers.show', [
             'admin' => $request->user('admin'),
             'customer' => $customer,
+            'headerStats' => $this->getCustomerHeaderStats($customer),
+            'activeTab' => 'overview',
         ]);
+    }
+
+    /**
+     * Display customer dedicated transactions view.
+     */
+    public function transactions(Customer $customer, Request $request): View
+    {
+        $customer->load(['wallet', 'virtualAccount']);
+
+        $wallet = $customer->wallet;
+        $search = $request->string('search')->trim()->value();
+        $direction = $request->string('direction')->trim()->value();
+        $type = $request->string('type')->trim()->value();
+        $dateFrom = $request->string('date_from')->trim()->value();
+        $dateTo = $request->string('date_to')->trim()->value();
+
+        $query = LedgerEntry::query()
+            ->where('wallet_id', $wallet ? $wallet->id : 0)
+            ->latest('id');
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search): void {
+                $q->where('reference', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        if ($direction !== '') {
+            $query->where('direction', $direction);
+        }
+
+        if ($type !== '') {
+            $query->where('type', $type);
+        }
+
+        if ($dateFrom !== '') {
+            $query->whereDate('created_at', '>=', $dateFrom);
+        }
+
+        if ($dateTo !== '') {
+            $query->whereDate('created_at', '<=', $dateTo);
+        }
+
+        $ledgerEntries = $query->paginate(20)->withQueryString();
+
+        $walletId = $wallet ? $wallet->id : 0;
+        $transStats = [
+            'total_credits' => LedgerEntry::where('wallet_id', $walletId)->where('direction', LedgerDirection::CREDIT)->sum('amount'),
+            'total_debits' => LedgerEntry::where('wallet_id', $walletId)->where('direction', LedgerDirection::DEBIT)->sum('amount'),
+            'manual_adjustments' => LedgerEntry::where('wallet_id', $walletId)->where('type', LedgerEntryType::MANUAL_ADJUSTMENT)->count(),
+        ];
+
+        return view('admin.customers.transactions', [
+            'admin' => $request->user('admin'),
+            'customer' => $customer,
+            'wallet' => $wallet,
+            'ledgerEntries' => $ledgerEntries,
+            'transStats' => $transStats,
+            'search' => $search,
+            'direction' => $direction,
+            'type' => $type,
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
+            'headerStats' => $this->getCustomerHeaderStats($customer),
+            'activeTab' => 'transactions',
+        ]);
+    }
+
+    /**
+     * Display customer dedicated orders view.
+     */
+    public function orders(Customer $customer, Request $request): View
+    {
+        $search = $request->string('search')->trim()->value();
+        $status = $request->string('status')->trim()->value();
+        $category = $request->string('category')->trim()->value();
+
+        $query = BillOrder::query()
+            ->where('customer_id', $customer->id)
+            ->latest('id');
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search): void {
+                $q->where('reference', 'like', "%{$search}%")
+                    ->orWhere('provider_reference', 'like', "%{$search}%")
+                    ->orWhere('customer_identifier', 'like', "%{$search}%")
+                    ->orWhere('token', 'like', "%{$search}%")
+                    ->orWhere('service_name', 'like', "%{$search}%");
+            });
+        }
+
+        if ($status !== '') {
+            $query->where('status', $status);
+        }
+
+        if ($category !== '') {
+            $query->where('category', $category);
+        }
+
+        $orders = $query->paginate(20)->withQueryString();
+
+        $orderStats = [
+            'total_count' => BillOrder::where('customer_id', $customer->id)->count(),
+            'total_amount' => BillOrder::where('customer_id', $customer->id)->where('status', 'completed')->sum('amount'),
+            'completed' => BillOrder::where('customer_id', $customer->id)->where('status', 'completed')->count(),
+            'failed' => BillOrder::where('customer_id', $customer->id)->whereIn('status', ['failed', 'refunded'])->count(),
+        ];
+
+        return view('admin.customers.orders', [
+            'admin' => $request->user('admin'),
+            'customer' => $customer,
+            'orders' => $orders,
+            'orderStats' => $orderStats,
+            'search' => $search,
+            'status' => $status,
+            'category' => $category,
+            'headerStats' => $this->getCustomerHeaderStats($customer),
+            'activeTab' => 'orders',
+        ]);
+    }
+
+    /**
+     * Display customer dedicated support tickets view.
+     */
+    public function tickets(Customer $customer, Request $request): View
+    {
+        $status = $request->string('status')->trim()->value();
+        $category = $request->string('category')->trim()->value();
+        $search = $request->string('search')->trim()->value();
+
+        $query = SupportTicket::query()
+            ->where('customer_id', $customer->id)
+            ->with(['latestMessage'])
+            ->withCount('messages')
+            ->latest('updated_at');
+
+        if ($status !== '') {
+            $query->where('status', $status);
+        }
+
+        if ($category !== '') {
+            $query->where('category', $category);
+        }
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search): void {
+                $q->where('reference', 'like', "%{$search}%")
+                    ->orWhere('subject', 'like', "%{$search}%");
+            });
+        }
+
+        $tickets = $query->paginate(15)->withQueryString();
+
+        $ticketStats = [
+            'total' => SupportTicket::where('customer_id', $customer->id)->count(),
+            'open' => SupportTicket::where('customer_id', $customer->id)->where('status', TicketStatus::OPEN)->count(),
+            'in_progress' => SupportTicket::where('customer_id', $customer->id)->where('status', TicketStatus::IN_PROGRESS)->count(),
+            'resolved' => SupportTicket::where('customer_id', $customer->id)->whereIn('status', [TicketStatus::RESOLVED, TicketStatus::CLOSED])->count(),
+        ];
+
+        return view('admin.customers.tickets.index', [
+            'admin' => $request->user('admin'),
+            'customer' => $customer,
+            'tickets' => $tickets,
+            'ticketStats' => $ticketStats,
+            'status' => $status,
+            'category' => $category,
+            'search' => $search,
+            'headerStats' => $this->getCustomerHeaderStats($customer),
+            'activeTab' => 'tickets',
+        ]);
+    }
+
+    /**
+     * Display detailed conversation thread for a customer's support ticket.
+     */
+    public function showTicket(Customer $customer, SupportTicket $ticket, Request $request): View
+    {
+        abort_if($ticket->customer_id !== $customer->id, 404);
+
+        $ticket->load([
+            'messages' => fn ($q) => $q->oldest('id'),
+            'customer',
+        ])->loadCount('messages');
+
+        // Mark unread messages as read by admin if needed
+        $ticket->messages()
+            ->where('author_type', 'customer')
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        return view('admin.customers.tickets.show', [
+            'admin' => $request->user('admin'),
+            'customer' => $customer,
+            'ticket' => $ticket,
+            'headerStats' => $this->getCustomerHeaderStats($customer),
+            'activeTab' => 'tickets',
+        ]);
+    }
+
+    /**
+     * Reply to a customer's support ticket.
+     */
+    public function replyTicket(Customer $customer, SupportTicket $ticket, Request $request): JsonResponse|RedirectResponse
+    {
+        abort_if($ticket->customer_id !== $customer->id, 404);
+
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'min:2', 'max:5000'],
+            'status' => ['nullable', 'string', 'in:open,in_progress,resolved,closed'],
+        ]);
+
+        $admin = $request->user('admin');
+        $authorName = $admin instanceof Admin ? $admin->username : 'Support Agent';
+
+        DB::transaction(function () use ($ticket, $validated, $admin, $authorName, $customer): void {
+            SupportTicketMessage::create([
+                'ulid' => (string) Str::ulid(),
+                'ticket_id' => $ticket->id,
+                'author_type' => 'admin',
+                'author_id' => $admin?->id,
+                'author_name' => $authorName,
+                'body' => $validated['message'],
+                'created_at' => now(),
+            ]);
+
+            $newStatus = $validated['status'] ?? null;
+            if ($newStatus) {
+                $ticket->status = TicketStatus::from($newStatus);
+            }
+
+            $ticket->has_unread_reply = true;
+            $ticket->touch();
+            $ticket->save();
+
+            // Dispatch notification to customer
+            $snippet = Str::limit($validated['message'], 100);
+            $customer->notify(new SupportTicketReplyNotification($ticket, $snippet));
+        });
+
+        $message = 'Reply sent to customer successfully.';
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => $message,
+            ]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Update customer support ticket status.
+     */
+    public function updateTicketStatus(Customer $customer, SupportTicket $ticket, Request $request): JsonResponse|RedirectResponse
+    {
+        abort_if($ticket->customer_id !== $customer->id, 404);
+
+        $validated = $request->validate([
+            'status' => ['required', 'string', 'in:open,in_progress,resolved,closed'],
+        ]);
+
+        $ticket->update([
+            'status' => TicketStatus::from($validated['status']),
+        ]);
+
+        $message = 'Ticket status updated to '.ucfirst(str_replace('_', ' ', $validated['status'])).'.';
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => $message,
+            ]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Manually credit or debit customer wallet.
+     */
+    public function adjustWallet(Customer $customer, Request $request, WalletService $walletService): JsonResponse|RedirectResponse
+    {
+        $validated = $request->validate([
+            'action' => ['required', 'in:credit,debit'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+            'reference' => ['nullable', 'string', 'max:64'],
+            'notify' => ['nullable', 'boolean'],
+        ]);
+
+        $action = $validated['action'];
+        $amountInKobo = (int) round(((float) $validated['amount']) * 100);
+        $reason = trim($validated['reason']);
+        $admin = $request->user('admin');
+
+        $wallet = $walletService->getOrCreateWallet($customer);
+
+        // Overdraw protection on debit
+        if ($action === 'debit' && $wallet->balance < $amountInKobo) {
+            $formattedBal = number_format($wallet->balance / 100, 2);
+            $errorMessage = "Insufficient customer balance. The customer currently has ₦{$formattedBal} available.";
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => $errorMessage,
+                ], 422);
+            }
+
+            return back()->withErrors(['amount' => $errorMessage])->withInput();
+        }
+
+        $reference = trim((string) ($validated['reference'] ?? ''));
+        if ($reference === '') {
+            $prefix = $action === 'credit' ? 'MANUAL-CR-' : 'MANUAL-DR-';
+            $reference = $prefix.strtoupper(Str::random(10));
+        }
+
+        $metadata = [
+            'channel' => 'admin_console',
+            'admin_id' => $admin?->id,
+            'admin_username' => $admin?->username,
+            'reason' => $reason,
+            'adjusted_at' => now()->toIso8601String(),
+        ];
+
+        try {
+            if ($action === 'credit') {
+                $walletService->credit(
+                    wallet: $wallet,
+                    amount: $amountInKobo,
+                    type: LedgerEntryType::MANUAL_ADJUSTMENT,
+                    description: "Manual Admin Credit: {$reason}",
+                    reference: $reference,
+                    metadata: $metadata
+                );
+            } else {
+                $walletService->debit(
+                    wallet: $wallet,
+                    amount: $amountInKobo,
+                    type: LedgerEntryType::MANUAL_ADJUSTMENT,
+                    description: "Manual Admin Debit: {$reason}",
+                    reference: $reference,
+                    metadata: $metadata
+                );
+            }
+        } catch (InsufficientBalanceException $e) {
+            $errorMessage = $e->getMessage();
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => $errorMessage,
+                ], 422);
+            }
+
+            return back()->withErrors(['amount' => $errorMessage])->withInput();
+        } catch (Throwable $e) {
+            $errorMessage = 'Failed to adjust wallet balance: '.$e->getMessage();
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => $errorMessage,
+                ], 500);
+            }
+
+            return back()->withErrors(['amount' => $errorMessage])->withInput();
+        }
+
+        $wallet->refresh();
+        $formattedAmount = number_format($amountInKobo / 100, 2);
+        $newBalanceFormatted = number_format($wallet->balance / 100, 2);
+        $verb = $action === 'credit' ? 'credited with' : 'debited of';
+        $successMessage = "Successfully {$verb} ₦{$formattedAmount}. New wallet balance: ₦{$newBalanceFormatted}.";
+
+        // Dispatch notification if requested
+        if ($request->boolean('notify', true)) {
+            $customer->notify(new WalletAdjustmentNotification(
+                action: $action,
+                amountInKobo: $amountInKobo,
+                reason: $reason,
+                currency: $wallet->currency,
+                reference: $reference
+            ));
+        }
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => $successMessage,
+                'data' => [
+                    'balance_kobo' => $wallet->balance,
+                    'balance_formatted' => '₦'.$newBalanceFormatted,
+                    'reference' => $reference,
+                ],
+            ]);
+        }
+
+        return back()->with('success', $successMessage);
+    }
+
+    /**
+     * Manually mark customer email as verified.
+     */
+    public function verifyEmail(Customer $customer, Request $request): JsonResponse|RedirectResponse
+    {
+        if ($customer->email_verified_at !== null) {
+            $message = 'Customer email is already verified.';
+        } else {
+            $customer->update(['email_verified_at' => now()]);
+            $message = "Customer email for @{$customer->username} has been verified successfully.";
+        }
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => $message,
+                'verified_at' => $customer->email_verified_at?->format('M d, Y H:i'),
+            ]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Dispatch password reset link to customer email.
+     */
+    public function sendPasswordReset(Customer $customer, Request $request): JsonResponse|RedirectResponse
+    {
+        Password::broker('customers')->sendResetLink(['email' => $customer->email]);
+
+        $message = "A password reset link has been dispatched to {$customer->email}.";
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => $message,
+            ]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Terminate active sessions and revoke trusted devices.
+     */
+    public function terminateSessions(Customer $customer, Request $request): JsonResponse|RedirectResponse
+    {
+        $devicesCount = $customer->trustedDevices()->count();
+        $customer->trustedDevices()->delete();
+        $customer->deviceChallenges()->delete();
+
+        // Invalidate database session store if active
+        try {
+            DB::table('sessions')->where('user_id', $customer->id)->delete();
+        } catch (Throwable) {
+            // Non-fatal if session driver is not database
+        }
+
+        $message = "Terminated {$devicesCount} trusted device(s) and reset active sessions for @{$customer->username}.";
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => $message,
+            ]);
+        }
+
+        return back()->with('success', $message);
     }
 
     /**
@@ -138,5 +628,24 @@ class AdminCustomerController extends Controller
         }
 
         return redirect()->route('admin.customers.index')->with('success', $message);
+    }
+
+    /**
+     * Helper to compute customer 360 quick stats.
+     *
+     * @return array<string, mixed>
+     */
+    private function getCustomerHeaderStats(Customer $customer): array
+    {
+        $wallet = $customer->wallet;
+
+        return [
+            'wallet_balance_formatted' => '₦'.number_format(($wallet ? $wallet->balance : 0) / 100, 2),
+            'orders_count' => $customer->billOrders()->count(),
+            'orders_spent_formatted' => '₦'.number_format($customer->billOrders()->where('status', 'completed')->sum('amount') / 100, 2),
+            'tickets_count' => $customer->supportTickets()->count(),
+            'open_tickets_count' => $customer->supportTickets()->whereIn('status', [TicketStatus::OPEN, TicketStatus::IN_PROGRESS])->count(),
+            'devices_count' => $customer->trustedDevices()->count(),
+        ];
     }
 }

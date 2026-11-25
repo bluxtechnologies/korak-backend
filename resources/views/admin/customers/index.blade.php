@@ -293,33 +293,74 @@
                                 </span>
                             </td>
                             <td class="text-end">
-                                <div class="d-inline-flex gap-1">
-                                    <!-- View Action -->
+                                <div class="d-inline-flex align-items-center gap-1">
+                                    {{-- Quick View 360 Profile --}}
                                     <a href="{{ route('admin.customers.show', $customer) }}"
                                        class="btn btn-sm btn-soft-primary"
-                                       title="View customer profile">
+                                       title="View 360 customer profile">
                                         <i class="ti ti-eye"></i> View
                                     </a>
 
-                                    <!-- Lock / Unlock Action -->
-                                    <button type="button"
-                                            class="btn btn-sm {{ $customer->is_locked ? 'btn-soft-success' : 'btn-soft-warning' }} btn-toggle-lock"
-                                            data-id="{{ $customer->id }}"
-                                            data-username="{{ $customer->username }}"
-                                            data-locked="{{ $customer->is_locked ? '1' : '0' }}"
-                                            title="{{ $customer->is_locked ? 'Unlock customer' : 'Lock customer' }}">
-                                        <i class="ti {{ $customer->is_locked ? 'ti-lock-open' : 'ti-lock' }}"></i>
-                                        <span class="lock-text">{{ $customer->is_locked ? 'Unlock' : 'Lock' }}</span>
-                                    </button>
-
-                                    <!-- Delete Action with Icon -->
-                                    <button type="button"
-                                            class="btn btn-sm btn-soft-danger btn-delete-customer"
-                                            data-id="{{ $customer->id }}"
-                                            data-username="{{ $customer->username }}"
-                                            title="Delete customer">
-                                        <i class="ti ti-trash"></i>
-                                    </button>
+                                    {{-- Actions Dropdown Menu --}}
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                                                type="button"
+                                                data-bs-toggle="dropdown"
+                                                aria-expanded="false"
+                                                title="More customer actions">
+                                            <i class="ti ti-dots-vertical"></i>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end shadow-sm fs-13">
+                                            @php
+                                                $custFullName = trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) ?: $customer->username;
+                                                $custBal = $customer->wallet ? number_format(($customer->wallet->balance ?? 0) / 100, 2) : '0.00';
+                                            @endphp
+                                            <li>
+                                                <button type="button"
+                                                        class="dropdown-item d-flex align-items-center gap-2 btn-open-adjust-modal"
+                                                        data-customer-id="{{ $customer->id }}"
+                                                        data-customer-name="{{ $custFullName }}"
+                                                        data-customer-username="{{ $customer->username }}"
+                                                        data-customer-balance="{{ $custBal }}">
+                                                    <i class="ti ti-wallet text-primary fs-16"></i> Credit / Debit Balance
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <a class="dropdown-item d-flex align-items-center gap-2" href="{{ route('admin.customers.transactions', $customer) }}">
+                                                    <i class="ti ti-arrows-left-right text-info fs-16"></i> View Transactions
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a class="dropdown-item d-flex align-items-center gap-2" href="{{ route('admin.customers.orders', $customer) }}">
+                                                    <i class="ti ti-shopping-cart text-success fs-16"></i> View Orders
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a class="dropdown-item d-flex align-items-center gap-2" href="{{ route('admin.customers.tickets', $customer) }}">
+                                                    <i class="ti ti-headset text-warning fs-16"></i> View Support Tickets
+                                                </a>
+                                            </li>
+                                            <li><hr class="dropdown-divider my-1"></li>
+                                            <li>
+                                                <button type="button"
+                                                        class="dropdown-item d-flex align-items-center gap-2 {{ $customer->is_locked ? 'text-success' : 'text-warning' }} btn-toggle-lock"
+                                                        data-id="{{ $customer->id }}"
+                                                        data-username="{{ $customer->username }}"
+                                                        data-locked="{{ $customer->is_locked ? '1' : '0' }}">
+                                                    <i class="ti {{ $customer->is_locked ? 'ti-lock-open' : 'ti-lock' }} fs-16"></i>
+                                                    <span class="lock-text">{{ $customer->is_locked ? 'Unlock Account' : 'Lock Account' }}</span>
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <button type="button"
+                                                        class="dropdown-item d-flex align-items-center gap-2 text-danger btn-delete-customer"
+                                                        data-id="{{ $customer->id }}"
+                                                        data-username="{{ $customer->username }}">
+                                                    <i class="ti ti-trash fs-16"></i> Delete Customer
+                                                </button>
+                                            </li>
+                                        </ul>
+                                    </div>
                                 </div>
                             </td>
                         </tr>
@@ -359,6 +400,9 @@
         </div>
     @endif
 </div>
+
+{{-- Manual Adjustment Modal --}}
+@include('admin.customers.partials.credit-debit-modal')
 @endsection
 
 @section('scripts')
@@ -367,6 +411,7 @@
     <!-- DataTables js -->
     <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+    @include('admin.customers.partials.scripts')
     <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
     <script src="https://cdn.datatables.net/responsive/2.5.0/js/responsive.bootstrap5.min.js"></script>
 

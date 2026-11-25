@@ -79,6 +79,8 @@ class FinityPayService
             'f1qvuSR9IhshctqaPHZ3nXqJs2irapUA',
             config('services.finitypay.secret_key'),
             config('services.finitypay.cofinance_secret_key'),
+            config('services.finitypay.public_key'),
+            config('services.finitypay.business_id'),
         ];
 
         /** @var list<string> $secrets */

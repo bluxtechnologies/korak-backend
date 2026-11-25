@@ -36,6 +36,9 @@ use Illuminate\Notifications\Notifiable;
  * @property-read Collection<int, CustomerDeviceChallenge> $deviceChallenges
  * @property-read Wallet|null $wallet
  * @property-read CustomerVirtualAccount|null $virtualAccount
+ * @property-read Collection<int, BillOrder> $billOrders
+ * @property-read Collection<int, FundingRecord> $fundingRecords
+ * @property-read Collection<int, SupportTicket> $supportTickets
  */
 class Customer extends Authenticatable
 {
@@ -203,5 +206,25 @@ class Customer extends Authenticatable
     public function supportTickets(): HasMany
     {
         return $this->hasMany(SupportTicket::class);
+    }
+
+    /**
+     * Get the customer's bill / VTU orders.
+     *
+     * @return HasMany<BillOrder, $this>
+     */
+    public function billOrders(): HasMany
+    {
+        return $this->hasMany(BillOrder::class);
+    }
+
+    /**
+     * Get the customer's external funding records.
+     *
+     * @return HasMany<FundingRecord, $this>
+     */
+    public function fundingRecords(): HasMany
+    {
+        return $this->hasMany(FundingRecord::class);
     }
 }

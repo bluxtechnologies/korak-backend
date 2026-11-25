@@ -27,64 +27,36 @@
     ],
 ])
 
+{{-- Persistent Customer 360 Header --}}
+@include('admin.customers.partials.header', ['activeTab' => 'overview'])
+
 <div class="row g-3">
-    <!-- Left Column: Customer Profile & Quick Actions -->
+    <!-- Left Column: Detailed Contact & Profile Info -->
     <div class="col-lg-4">
         <div class="card mb-3">
-            <div class="card-body text-center">
-                <div class="avatar-lg mx-auto mb-2">
-                    <span class="avatar-title bg-light text-primary rounded-circle fw-bold fs-24 d-inline-flex align-items-center justify-content-center" style="width: 72px; height: 72px;">
-                        {{ strtoupper(substr($customer->first_name ?? $customer->username, 0, 1)) }}
-                    </span>
-                </div>
-                <h5 class="fs-16 mb-1 text-dark fw-bold">
-                    {{ trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) ?: $customer->username }}
+            <div class="card-header border-bottom">
+                <h5 class="card-title fs-14 mb-0 fw-bold">
+                    <i class="ti ti-id me-1 text-primary"></i> Profile & Contact
                 </h5>
-                <p class="text-muted fs-13 mb-2">@<span>{{ $customer->username }}</span></p>
-
-                <div class="mb-3">
-                    @if($customer->is_locked)
-                        <span class="badge bg-danger-subtle text-danger fs-12 px-2 py-1">
-                            <i class="ti ti-lock me-1"></i> Account Locked
-                        </span>
-                        @if($customer->locked_at)
-                            <small class="text-muted d-block mt-1 fs-11">
-                                Since {{ $customer->locked_at->format('M d, Y H:i') }}
-                            </small>
-                        @endif
-                    @else
-                        <span class="badge bg-success-subtle text-success fs-12 px-2 py-1">
-                            <i class="ti ti-circle-check me-1"></i> Active Account
-                        </span>
-                    @endif
-                </div>
-
-                <div class="d-flex justify-content-center gap-2">
-                    <form method="POST" action="{{ route('admin.customers.toggle-lock', $customer) }}" class="d-inline">
-                        @csrf
-                        <button type="submit" class="btn btn-sm {{ $customer->is_locked ? 'btn-success' : 'btn-warning' }}">
-                            <i class="ti {{ $customer->is_locked ? 'ti-lock-open' : 'ti-lock' }} me-1"></i>
-                            {{ $customer->is_locked ? 'Unlock User' : 'Lock User' }}
-                        </button>
-                    </form>
-
-                    <button type="button" class="btn btn-sm btn-outline-danger btn-delete-profile" data-id="{{ $customer->id }}" data-username="{{ $customer->username }}">
-                        <i class="ti ti-trash me-1"></i> Delete
-                    </button>
-                </div>
             </div>
-
-            <div class="card-body border-top">
-                <h6 class="fs-13 text-uppercase text-muted fw-semibold mb-3">Contact Information</h6>
+            <div class="card-body">
                 <ul class="list-unstyled mb-0 fs-13">
+                    <li class="mb-2 d-flex justify-content-between align-items-center">
+                        <span class="text-muted">Full Name:</span>
+                        <span class="fw-semibold text-dark">{{ trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) ?: $customer->username }}</span>
+                    </li>
+                    <li class="mb-2 d-flex justify-content-between align-items-center">
+                        <span class="text-muted">Username:</span>
+                        <span class="font-monospace text-dark">@<span>{{ $customer->username }}</span></span>
+                    </li>
                     <li class="mb-2 d-flex justify-content-between align-items-center">
                         <span class="text-muted">Email:</span>
                         <span class="fw-medium text-dark">{{ $customer->email }}</span>
                     </li>
                     <li class="mb-2 d-flex justify-content-between align-items-center">
-                        <span class="text-muted">Email Verified:</span>
+                        <span class="text-muted">Email Status:</span>
                         @if($customer->email_verified_at)
-                            <span class="text-success"><i class="ti ti-check-circle me-1"></i> {{ $customer->email_verified_at->format('M d, Y') }}</span>
+                            <span class="text-success"><i class="ti ti-check-circle me-1"></i> Verified ({{ $customer->email_verified_at->format('M d, Y') }})</span>
                         @else
                             <span class="badge bg-warning-subtle text-warning">Unverified</span>
                         @endif
@@ -97,26 +69,68 @@
                         <span class="text-muted">Public ULID:</span>
                         <span class="font-monospace text-dark fs-12">{{ $customer->ulid }}</span>
                     </li>
-                    <li class="d-flex justify-content-between align-items-center">
+                    <li class="mb-2 d-flex justify-content-between align-items-center">
                         <span class="text-muted">Registered On:</span>
                         <span class="text-dark">{{ $customer->created_at ? $customer->created_at->format('M d, Y H:i') : '—' }}</span>
                     </li>
+                    @if($customer->is_locked && $customer->locked_at)
+                        <li class="d-flex justify-content-between align-items-center text-danger">
+                            <span>Locked Since:</span>
+                            <span>{{ $customer->locked_at->format('M d, Y H:i') }}</span>
+                        </li>
+                    @endif
                 </ul>
+            </div>
+        </div>
+
+        <!-- Dedicated Virtual Account Card -->
+        <div class="card mb-3">
+            <div class="card-header border-bottom">
+                <h5 class="card-title fs-14 mb-0 fw-bold">
+                    <i class="ti ti-building-bank me-1 text-info"></i> Dedicated Virtual Account
+                </h5>
+            </div>
+            <div class="card-body">
+                @if($customer->virtualAccount)
+                    <div class="row g-2 fs-13">
+                        <div class="col-12 mb-2">
+                            <span class="text-muted fs-11 text-uppercase fw-semibold d-block">Bank Name</span>
+                            <span class="fs-15 text-dark fw-bold">{{ $customer->virtualAccount->bank_name }}</span>
+                        </div>
+                        <div class="col-12 mb-2">
+                            <span class="text-muted fs-11 text-uppercase fw-semibold d-block">Account Number</span>
+                            <span class="fs-18 font-monospace text-dark fw-bold">{{ $customer->virtualAccount->account_number }}</span>
+                        </div>
+                        <div class="col-12 mb-2">
+                            <span class="text-muted fs-11 text-uppercase fw-semibold d-block">Account Name</span>
+                            <span class="fs-13 text-dark">{{ $customer->virtualAccount->account_name ?: '—' }}</span>
+                        </div>
+                        <div class="col-12">
+                            <span class="text-muted fs-11 text-uppercase fw-semibold d-block">Provider & Ref</span>
+                            <span class="fs-12 text-muted font-monospace">{{ ucfirst($customer->virtualAccount->provider) }} ({{ $customer->virtualAccount->account_reference }})</span>
+                        </div>
+                    </div>
+                @else
+                    <div class="text-center py-3 text-muted">
+                        <i class="ti ti-building-bank fs-28 mb-1 d-block text-secondary"></i>
+                        <p class="fs-12 mb-0">No dedicated virtual account generated yet.</p>
+                    </div>
+                @endif
             </div>
         </div>
     </div>
 
-    <!-- Right Column: Wallet, Virtual Account & Security Details -->
+    <!-- Right Column: Wallet Snapshot, Recent Orders & Security -->
     <div class="col-lg-8">
-        <!-- Wallet Card -->
+        <!-- Wallet & Recent Ledger Snapshot -->
         <div class="card mb-3">
             <div class="card-header border-bottom d-flex align-items-center justify-content-between">
                 <h5 class="card-title fs-14 mb-0 fw-bold">
-                    <i class="ti ti-wallet me-1 text-primary"></i> Wallet & Ledger
+                    <i class="ti ti-wallet me-1 text-primary"></i> Wallet & Recent Ledger
                 </h5>
-                @if($customer->wallet)
-                    <span class="badge bg-light text-dark fs-12">Currency: {{ $customer->wallet->currency }}</span>
-                @endif
+                <a href="{{ route('admin.customers.transactions', $customer) }}" class="btn btn-sm btn-link text-primary p-0 text-decoration-none fs-12">
+                    View All Transactions <i class="ti ti-arrow-right"></i>
+                </a>
             </div>
             <div class="card-body">
                 @if($customer->wallet)
@@ -126,16 +140,18 @@
                             <h2 class="my-1 text-dark fs-28 fw-bold">
                                 ₦{{ number_format($customer->wallet->balance / 100, 2) }}
                             </h2>
-                            <small class="text-muted fs-11">Raw minor units: {{ number_format($customer->wallet->balance) }} kobo</small>
+                            <small class="text-muted fs-11">Currency: {{ $customer->wallet->currency }}</small>
                         </div>
-                        <div class="avatar-md">
-                            <span class="avatar-title bg-primary text-white rounded fs-24 p-3">
-                                <i class="ti ti-cash"></i>
-                            </span>
-                        </div>
+                        <button type="button"
+                                class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1 btn-open-adjust-modal"
+                                data-customer-id="{{ $customer->id }}"
+                                data-customer-name="{{ trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) ?: $customer->username }}"
+                                data-customer-username="{{ $customer->username }}"
+                                data-customer-balance="{{ number_format($customer->wallet->balance / 100, 2) }}">
+                            <i class="ti ti-plus-minus fs-14"></i> Adjust Balance
+                        </button>
                     </div>
 
-                    <h6 class="fs-13 text-muted text-uppercase fw-semibold mb-2">Recent Ledger Entries</h6>
                     @if($customer->wallet->ledgerEntries->isNotEmpty())
                         <div class="table-responsive">
                             <table class="table table-sm table-hover align-middle mb-0 fs-12">
@@ -150,16 +166,16 @@
                                 <tbody>
                                     @foreach($customer->wallet->ledgerEntries as $entry)
                                         <tr>
-                                            <td>{{ $entry->created_at->format('M d, Y H:i') }}</td>
+                                            <td>{{ $entry->created_at->format('M d, H:i') }}</td>
                                             <td>
-                                                <span class="badge {{ ($entry->type->value ?? '') === 'credit' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger' }}">
+                                                <span class="badge {{ ($entry->type->value ?? '') === 'credit' || ($entry->direction->value ?? '') === 'credit' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger' }}">
                                                     {{ ucfirst($entry->type->value ?? 'entry') }}
                                                 </span>
                                             </td>
                                             <td class="fw-semibold">
-                                                ₦{{ number_format($entry->amount / 100, 2) }}
+                                                {{ ($entry->direction->value ?? '') === 'credit' ? '+' : '-' }}₦{{ number_format($entry->amount / 100, 2) }}
                                             </td>
-                                            <td class="text-muted">{{ $entry->description ?? '—' }}</td>
+                                            <td class="text-muted">{{ Str::limit($entry->description ?? '—', 45) }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -177,39 +193,55 @@
             </div>
         </div>
 
-        <!-- Dedicated Virtual Account Card -->
+        <!-- Recent Orders Snapshot -->
         <div class="card mb-3">
-            <div class="card-header border-bottom">
+            <div class="card-header border-bottom d-flex align-items-center justify-content-between">
                 <h5 class="card-title fs-14 mb-0 fw-bold">
-                    <i class="ti ti-building-bank me-1 text-info"></i> Dedicated Virtual Account
+                    <i class="ti ti-shopping-cart me-1 text-info"></i> Recent Orders
                 </h5>
+                <a href="{{ route('admin.customers.orders', $customer) }}" class="btn btn-sm btn-link text-primary p-0 text-decoration-none fs-12">
+                    View All Orders <i class="ti ti-arrow-right"></i>
+                </a>
             </div>
             <div class="card-body">
-                @if($customer->virtualAccount)
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label text-muted fs-12 mb-1">Bank Name</label>
-                            <h6 class="fs-15 text-dark fw-bold mb-0">{{ $customer->virtualAccount->bank_name }}</h6>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label text-muted fs-12 mb-1">Account Number</label>
-                            <h6 class="fs-16 font-monospace text-dark fw-bold mb-0">{{ $customer->virtualAccount->account_number }}</h6>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label text-muted fs-12 mb-1">Account Name</label>
-                            <p class="fs-13 text-dark mb-0">{{ $customer->virtualAccount->account_name ?: '—' }}</p>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label text-muted fs-12 mb-1">Provider & Reference</label>
-                            <p class="fs-12 text-muted font-monospace mb-0">{{ ucfirst($customer->virtualAccount->provider) }} ({{ $customer->virtualAccount->account_reference }})</p>
-                        </div>
+                @if($customer->billOrders->isNotEmpty())
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0 fs-12">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Service</th>
+                                    <th>Identifier</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($customer->billOrders as $order)
+                                    <tr>
+                                        <td>{{ $order->created_at->format('M d, H:i') }}</td>
+                                        <td class="fw-medium text-dark">{{ $order->service_name }}</td>
+                                        <td class="font-monospace text-muted">{{ $order->customer_identifier }}</td>
+                                        <td class="fw-semibold">₦{{ number_format($order->amount / 100, 2) }}</td>
+                                        <td>
+                                            @php
+                                                $badgeClass = match($order->status) {
+                                                    'completed' => 'bg-success-subtle text-success',
+                                                    'processing' => 'bg-info-subtle text-info',
+                                                    'failed' => 'bg-danger-subtle text-danger',
+                                                    'refunded' => 'bg-warning-subtle text-warning',
+                                                    default => 'bg-secondary-subtle text-secondary',
+                                                };
+                                            @endphp
+                                            <span class="badge {{ $badgeClass }}">{{ ucfirst($order->status) }}</span>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
                     </div>
                 @else
-                    <div class="text-center py-4 text-muted">
-                        <i class="ti ti-building-bank fs-32 mb-1 d-block text-secondary"></i>
-                        <h6 class="fs-14">No Dedicated Virtual Account</h6>
-                        <p class="fs-13 mb-0">The customer has not generated dedicated bank account details yet.</p>
-                    </div>
+                    <p class="text-muted fs-13 mb-0">No orders placed by this customer yet.</p>
                 @endif
             </div>
         </div>
@@ -221,7 +253,7 @@
                     <i class="ti ti-shield-lock me-1 text-success"></i> Security & Devices
                 </h5>
                 <span class="badge {{ $customer->device_verification_enabled ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary' }}">
-                    2FA Device Verification: {{ $customer->device_verification_enabled ? 'Enabled' : 'Disabled' }}
+                    2FA Verification: {{ $customer->device_verification_enabled ? 'Enabled' : 'Disabled' }}
                 </span>
             </div>
             <div class="card-body">
@@ -256,37 +288,12 @@
         </div>
     </div>
 </div>
+
+{{-- Adjustment Modal & Script Partials --}}
+@include('admin.customers.partials.credit-debit-modal')
 @endsection
 
 @section('scripts')
     <script src="{{ asset('admin/assets/vendor/sweetalert2/sweetalert2.min.js') }}"></script>
-    <script>
-        $(document).on('click', '.btn-delete-profile', function () {
-            const customerId = $(this).data('id');
-            const username = $(this).data('username');
-
-            Swal.fire({
-                title: 'Delete Customer?',
-                text: `Are you sure you want to delete customer @${username}? This action is irreversible.`,
-                icon: 'error',
-                showCancelButton: true,
-                confirmButtonColor: '#ea5455',
-                cancelButtonColor: '#6c757d',
-                confirmButtonText: 'Yes, permanently delete',
-                cancelButtonText: 'Cancel'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    const form = $('<form>', {
-                        action: `/admininistator/customers/${customerId}`,
-                        method: 'POST'
-                    }).append(
-                        $('<input>', { type: 'hidden', name: '_token', value: $('meta[name="csrf-token"]').attr('content') }),
-                        $('<input>', { type: 'hidden', name: '_method', value: 'DELETE' })
-                    );
-                    $('body').append(form);
-                    form.submit();
-                }
-            });
-        });
-    </script>
+    @include('admin.customers.partials.scripts')
 @endsection

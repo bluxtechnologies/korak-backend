@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api\V1\Webhooks;
 
 use App\Http\Controllers\Controller;
-use App\Http\Responses\ApiResponse;
 use App\Services\Providers\FinityPayService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,10 +28,11 @@ class FinityPayWebhookController extends Controller
      */
     public function __invoke(Request $request): JsonResponse
     {
-        $signature = $this->extractSignature($request);
-        $timestamp = $this->extractTimestamp($request);
-        $msgId = $this->extractMsgId($request);
-        $rawContent = $request->getContent();
+        $allHeaders = $this->collectAllHeaders($request);
+        $signature = $this->extractSignature($request, $allHeaders);
+        $timestamp = $this->extractTimestamp($request, $allHeaders);
+        $msgId = $this->extractMsgId($request, $allHeaders);
+        $rawContent = $request->getContent() ?: (string) file_get_contents('php://input');
 
         Log::info('Incoming FinityPay webhook received', [
             'method' => $request->method(),
@@ -41,7 +41,7 @@ class FinityPayWebhookController extends Controller
             'signature_preview' => $signature ? substr($signature, 0, 16).'...' : null,
             'header_timestamp' => $timestamp,
             'msg_id' => $msgId,
-            'header_keys' => array_keys($request->headers->all()),
+            'header_keys' => array_keys($allHeaders),
             'payload_type' => $request->input('type') ?? $request->input('event'),
             'ip' => $request->ip(),
         ]);
@@ -49,15 +49,23 @@ class FinityPayWebhookController extends Controller
         if (! $this->finityPayService->verifyWebhookSignature($rawContent, $signature, $timestamp, $msgId)) {
             Log::warning('FinityPay webhook signature rejected', [
                 'extracted_signature' => $signature,
-                'header_keys' => array_keys($request->headers->all()),
+                'header_keys' => array_keys($allHeaders),
                 'ip' => $request->ip(),
             ]);
 
-            return ApiResponse::error(
-                message: 'Invalid webhook signature.',
-                code: 'invalid_webhook_signature',
-                status: 401
-            );
+            return response()->json([
+                'status' => 'error',
+                'code' => 'invalid_webhook_signature',
+                'message' => 'Invalid webhook signature.',
+                'diagnostic' => [
+                    'version' => '2026.11.25-svix-sha512',
+                    'signature_found' => ! empty($signature),
+                    'signature_length' => $signature ? strlen($signature) : 0,
+                    'signature_preview' => $signature ? substr($signature, 0, 16).'...' : null,
+                    'header_keys_detected' => array_keys($allHeaders),
+                    'secrets_configured' => count($this->finityPayService->getAllWebhookSecrets()),
+                ],
+            ], 401);
         }
 
         /** @var array<string, mixed> $payload */
@@ -79,19 +87,71 @@ class FinityPayWebhookController extends Controller
     }
 
     /**
-     * Extract signature from all known HTTP headers, server variables, and query parameters.
+     * Gather all incoming request headers from getallheaders(), apache_request_headers(),
+     * Symfony request headers, and $_SERVER.
+     *
+     * @return array<string, string>
      */
-    protected function extractSignature(Request $request): ?string
+    protected function collectAllHeaders(Request $request): array
+    {
+        $headers = [];
+
+        if (function_exists('getallheaders')) {
+            $native = (array) getallheaders();
+            foreach ($native as $k => $v) {
+                if (is_string($k) && (is_string($v) || is_numeric($v))) {
+                    $headers[strtolower(trim($k))] = trim((string) $v);
+                }
+            }
+        }
+
+        if (function_exists('apache_request_headers')) {
+            $native = (array) apache_request_headers();
+            foreach ($native as $k => $v) {
+                if (is_string($k) && (is_string($v) || is_numeric($v))) {
+                    $headers[strtolower(trim($k))] = trim((string) $v);
+                }
+            }
+        }
+
+        foreach ($request->headers->all() as $k => $values) {
+            $val = $values[0] ?? null;
+            if (is_string($val) && trim($val) !== '') {
+                $headers[strtolower(trim($k))] = trim($val);
+            }
+        }
+
+        foreach ($_SERVER as $k => $v) {
+            if (is_string($v) && trim($v) !== '') {
+                $lower = strtolower($k);
+                if (str_starts_with($lower, 'http_')) {
+                    $norm = str_replace('_', '-', substr($lower, 5));
+                    $headers[$norm] = trim($v);
+                }
+                $headers[$lower] = trim($v);
+            }
+        }
+
+        return $headers;
+    }
+
+    /**
+     * Extract signature from all known HTTP headers, server variables, and query parameters.
+     *
+     * @param  array<string, string>  $allHeaders
+     */
+    protected function extractSignature(Request $request, array $allHeaders): ?string
     {
         $knownHeaders = [
+            'x-cofinance-signature',
+            'x-finity-signature',
+            'x-finitypay-signature',
             'webhook-signature',
             'svix-signature',
             'x-webhook-signature',
             'x-svix-signature',
-            'x-cofinance-signature',
-            'x-finity-signature',
-            'x-finitypay-signature',
             'x-signature-sha256',
+            'x-signature-sha512',
             'x-hub-signature-256',
             'x-hub-signature',
             'x-signature',
@@ -102,39 +162,16 @@ class FinityPayWebhookController extends Controller
         ];
 
         foreach ($knownHeaders as $header) {
-            $val = $request->header($header);
-            if (is_string($val) && trim($val) !== '') {
-                return trim($val);
-            }
-        }
-
-        // Check LiteSpeed / Apache raw server headers
-        $serverKeys = [
-            'HTTP_WEBHOOK_SIGNATURE',
-            'HTTP_SVIX_SIGNATURE',
-            'HTTP_X_WEBHOOK_SIGNATURE',
-            'HTTP_X_SVIX_SIGNATURE',
-            'HTTP_X_COFINANCE_SIGNATURE',
-            'HTTP_X_FINITY_SIGNATURE',
-            'HTTP_X_FINITYPAY_SIGNATURE',
-            'HTTP_X_SIGNATURE',
-            'HTTP_SIGNATURE',
-        ];
-
-        foreach ($serverKeys as $serverKey) {
-            $val = $request->server($serverKey);
-            if (is_string($val) && trim($val) !== '') {
-                return trim($val);
+            if (! empty($allHeaders[$header])) {
+                return $allHeaders[$header];
             }
         }
 
         // Fuzzy search across all headers for 'signature' or 'hash'
-        foreach ($request->headers->all() as $name => $values) {
-            $lower = strtolower($name);
-            if (str_contains($lower, 'signature') || str_contains($lower, 'hash')) {
-                $val = $values[0] ?? null;
-                if (is_string($val) && trim($val) !== '') {
-                    return trim($val);
+        foreach ($allHeaders as $name => $val) {
+            if (str_contains($name, 'signature') || str_contains($name, 'hash')) {
+                if ($val !== '') {
+                    return $val;
                 }
             }
         }
@@ -155,15 +192,17 @@ class FinityPayWebhookController extends Controller
 
     /**
      * Extract timestamp from headers or server variables.
+     *
+     * @param  array<string, string>  $allHeaders
      */
-    protected function extractTimestamp(Request $request): ?string
+    protected function extractTimestamp(Request $request, array $allHeaders): ?string
     {
         $timestampHeaders = [
+            'x-cofinance-timestamp',
             'webhook-timestamp',
             'svix-timestamp',
             'x-webhook-timestamp',
             'x-svix-timestamp',
-            'x-cofinance-timestamp',
             'x-finity-timestamp',
             'x-finitypay-timestamp',
             'x-timestamp',
@@ -171,27 +210,8 @@ class FinityPayWebhookController extends Controller
         ];
 
         foreach ($timestampHeaders as $header) {
-            $val = $request->header($header);
-            if (is_string($val) && trim($val) !== '') {
-                return trim($val);
-            }
-        }
-
-        $serverKeys = [
-            'HTTP_WEBHOOK_TIMESTAMP',
-            'HTTP_SVIX_TIMESTAMP',
-            'HTTP_X_WEBHOOK_TIMESTAMP',
-            'HTTP_X_SVIX_TIMESTAMP',
-            'HTTP_X_COFINANCE_TIMESTAMP',
-            'HTTP_X_FINITY_TIMESTAMP',
-            'HTTP_X_FINITYPAY_TIMESTAMP',
-            'HTTP_X_TIMESTAMP',
-        ];
-
-        foreach ($serverKeys as $serverKey) {
-            $val = $request->server($serverKey);
-            if (is_string($val) && trim($val) !== '') {
-                return trim($val);
+            if (! empty($allHeaders[$header])) {
+                return $allHeaders[$header];
             }
         }
 
@@ -200,8 +220,10 @@ class FinityPayWebhookController extends Controller
 
     /**
      * Extract message / event ID from headers, server variables, or payload.
+     *
+     * @param  array<string, string>  $allHeaders
      */
-    protected function extractMsgId(Request $request): ?string
+    protected function extractMsgId(Request $request, array $allHeaders): ?string
     {
         $idHeaders = [
             'webhook-id',
@@ -214,24 +236,8 @@ class FinityPayWebhookController extends Controller
         ];
 
         foreach ($idHeaders as $header) {
-            $val = $request->header($header);
-            if (is_string($val) && trim($val) !== '') {
-                return trim($val);
-            }
-        }
-
-        $serverKeys = [
-            'HTTP_WEBHOOK_ID',
-            'HTTP_SVIX_ID',
-            'HTTP_X_WEBHOOK_ID',
-            'HTTP_X_SVIX_ID',
-            'HTTP_X_REQUEST_ID',
-        ];
-
-        foreach ($serverKeys as $serverKey) {
-            $val = $request->server($serverKey);
-            if (is_string($val) && trim($val) !== '') {
-                return trim($val);
+            if (! empty($allHeaders[$header])) {
+                return $allHeaders[$header];
             }
         }
 

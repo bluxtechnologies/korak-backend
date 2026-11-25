@@ -13,6 +13,20 @@
     RewriteCond %{HTTP:x-xsrf-token} .
     RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
 
+    # Handle FinityPay / CoFinance Webhook Headers
+    RewriteCond %{HTTP:x-cofinance-signature} .
+    RewriteRule .* - [E=HTTP_X_COFINANCE_SIGNATURE:%{HTTP:x-cofinance-signature}]
+    RewriteCond %{HTTP:x-cofinance-timestamp} .
+    RewriteRule .* - [E=HTTP_X_COFINANCE_TIMESTAMP:%{HTTP:x-cofinance-timestamp}]
+    RewriteCond %{HTTP:x-finity-signature} .
+    RewriteRule .* - [E=HTTP_X_FINITY_SIGNATURE:%{HTTP:x-finity-signature}]
+    RewriteCond %{HTTP:x-webhook-signature} .
+    RewriteRule .* - [E=HTTP_X_WEBHOOK_SIGNATURE:%{HTTP:x-webhook-signature}]
+    RewriteCond %{HTTP:webhook-signature} .
+    RewriteRule .* - [E=HTTP_WEBHOOK_SIGNATURE:%{HTTP:webhook-signature}]
+    RewriteCond %{HTTP:svix-signature} .
+    RewriteRule .* - [E=HTTP_SVIX_SIGNATURE:%{HTTP:svix-signature}]
+
     # Redirect Trailing Slashes If Not A Folder...
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_URI} (.+)/$

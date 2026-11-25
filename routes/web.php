@@ -91,7 +91,18 @@ Route::prefix('admininistator')->group(function (): void {
         Route::get('dashboard', [AdminDashboardController::class, 'index'])->name('admin.dashboard');
         Route::get('customers', [AdminCustomerController::class, 'index'])->name('admin.customers.index');
         Route::get('customers/{customer}', [AdminCustomerController::class, 'show'])->name('admin.customers.show');
+        Route::get('customers/{customer}/transactions', [AdminCustomerController::class, 'transactions'])->name('admin.customers.transactions');
+        Route::get('customers/{customer}/orders', [AdminCustomerController::class, 'orders'])->name('admin.customers.orders');
+        Route::get('customers/{customer}/tickets', [AdminCustomerController::class, 'tickets'])->name('admin.customers.tickets');
+        Route::get('customers/{customer}/tickets/{ticket}', [AdminCustomerController::class, 'showTicket'])->name('admin.customers.tickets.show');
+        Route::post('customers/{customer}/tickets/{ticket}/reply', [AdminCustomerController::class, 'replyTicket'])->name('admin.customers.tickets.reply');
+        Route::patch('customers/{customer}/tickets/{ticket}/status', [AdminCustomerController::class, 'updateTicketStatus'])->name('admin.customers.tickets.update-status');
+
+        Route::post('customers/{customer}/wallet/adjust', [AdminCustomerController::class, 'adjustWallet'])->name('admin.customers.wallet.adjust');
         Route::post('customers/{customer}/toggle-lock', [AdminCustomerController::class, 'toggleLock'])->name('admin.customers.toggle-lock');
+        Route::post('customers/{customer}/verify-email', [AdminCustomerController::class, 'verifyEmail'])->name('admin.customers.verify-email');
+        Route::post('customers/{customer}/send-password-reset', [AdminCustomerController::class, 'sendPasswordReset'])->name('admin.customers.send-password-reset');
+        Route::post('customers/{customer}/terminate-sessions', [AdminCustomerController::class, 'terminateSessions'])->name('admin.customers.terminate-sessions');
         Route::delete('customers/{customer}', [AdminCustomerController::class, 'destroy'])->name('admin.customers.destroy');
     });
 });
