@@ -197,7 +197,7 @@
                                         <td class="fw-semibold text-dark">{{ $service->service_name }}</td>
                                         <td>
                                             <span class="badge bg-primary-subtle text-primary">
-                                                {{ ucfirst(str_replace('_', ' ', (string) $service->type)) }}
+                                                {{ ucfirst(str_replace('_', ' ', (string) ($service->category ?? $service->type))) }}
                                             </span>
                                         </td>
                                         <td class="font-monospace fw-bold">{{ $service->order_count }}</td>

@@ -95,4 +95,12 @@ class BillOrder extends Model
     {
         return $this->belongsTo(Customer::class);
     }
+
+    /**
+     * Compatibility accessor for type / category.
+     */
+    public function getTypeAttribute(): string
+    {
+        return (string) ($this->attributes['category'] ?? '');
+    }
 }

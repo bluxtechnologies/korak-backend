@@ -708,22 +708,22 @@ class AdminCustomerController extends Controller
         // Spend by Category
         $categoriesRaw = BillOrder::where('customer_id', $customer->id)
             ->where('status', 'completed')
-            ->select('type', DB::raw('SUM(amount) as total_amount'))
-            ->groupBy('type')
+            ->select('category', DB::raw('SUM(amount) as total_amount'))
+            ->groupBy('category')
             ->get();
 
         $categoryLabels = [];
         $categorySeries = [];
         foreach ($categoriesRaw as $cat) {
-            $categoryLabels[] = ucfirst(str_replace('_', ' ', (string) $cat->type));
+            $categoryLabels[] = ucfirst(str_replace('_', ' ', (string) $cat->category));
             $categorySeries[] = (float) round($cat->total_amount / 100, 2);
         }
 
         // Top 5 Purchased Services
         $topServices = BillOrder::where('customer_id', $customer->id)
             ->where('status', 'completed')
-            ->select('service_name', 'type', DB::raw('COUNT(*) as order_count'), DB::raw('SUM(amount) as total_spent'))
-            ->groupBy('service_name', 'type')
+            ->select('service_name', 'category', DB::raw('COUNT(*) as order_count'), DB::raw('SUM(amount) as total_spent'))
+            ->groupBy('service_name', 'category')
             ->orderByDesc('order_count')
             ->limit(5)
             ->get();
@@ -1100,7 +1100,7 @@ class AdminCustomerController extends Controller
 
         $callback = function () use ($customer): void {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['ID', 'Reference', 'Date', 'Service', 'Type', 'Identifier', 'Amount (NGN)', 'Status']);
+            fputcsv($handle, ['ID', 'Reference', 'Date', 'Service', 'Category', 'Identifier', 'Amount (NGN)', 'Status']);
 
             $customer->billOrders()->orderBy('id')->chunk(500, function ($orders) use ($handle): void {
                 foreach ($orders as $o) {
@@ -1109,7 +1109,7 @@ class AdminCustomerController extends Controller
                         $o->reference,
                         $o->created_at->toDateTimeString(),
                         $o->service_name,
-                        $o->type,
+                        $o->category,
                         $o->customer_identifier,
                         number_format($o->amount / 100, 2, '.', ''),
                         $o->status,
