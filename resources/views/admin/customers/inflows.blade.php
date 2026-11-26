@@ -144,7 +144,7 @@
                                     ₦{{ number_format(($inflow->gross_amount ?? $inflow->amount) / 100, 2) }}
                                 </td>
                                 <td class="text-warning fw-semibold">
-                                    -₦{{ number_format($inflow->fee / 100, 2) }}
+                                    -₦{{ number_format(($inflow->fee ?? 0) / 100, 2) }}
                                 </td>
                                 <td class="text-success fw-bold">
                                     ₦{{ number_format($inflow->amount / 100, 2) }}

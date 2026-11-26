@@ -28,6 +28,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -644,10 +645,17 @@ class AdminCustomerController extends Controller
     {
         $headerStats = $this->getCustomerHeaderStats($customer);
 
+        $hasGrossAmount = Schema::hasColumn('funding_records', 'gross_amount');
+        $hasFee = Schema::hasColumn('funding_records', 'fee');
+
         // Financial KPIs
-        $totalDepositsKobo = (int) FundingRecord::where('customer_id', $customer->id)
-            ->where('status', FundingStatus::SUCCESSFUL)
-            ->sum('gross_amount');
+        $totalDepositsKobo = 0;
+        if ($hasGrossAmount) {
+            $totalDepositsKobo = (int) FundingRecord::where('customer_id', $customer->id)
+                ->where('status', FundingStatus::SUCCESSFUL)
+                ->sum('gross_amount');
+        }
+
         if ($totalDepositsKobo === 0) {
             $totalDepositsKobo = (int) FundingRecord::where('customer_id', $customer->id)
                 ->where('status', FundingStatus::SUCCESSFUL)
@@ -658,9 +666,11 @@ class AdminCustomerController extends Controller
             ->where('status', 'completed')
             ->sum('amount');
 
-        $totalFeesKobo = (int) FundingRecord::where('customer_id', $customer->id)
-            ->where('status', FundingStatus::SUCCESSFUL)
-            ->sum('fee');
+        $totalFeesKobo = $hasFee
+            ? (int) FundingRecord::where('customer_id', $customer->id)
+                ->where('status', FundingStatus::SUCCESSFUL)
+                ->sum('fee')
+            : 0;
 
         $totalOrders = BillOrder::where('customer_id', $customer->id)->count();
         $completedOrders = BillOrder::where('customer_id', $customer->id)->where('status', 'completed')->count();
@@ -773,10 +783,21 @@ class AdminCustomerController extends Controller
 
         $headerStats = $this->getCustomerHeaderStats($customer);
 
+        $hasGrossAmount = Schema::hasColumn('funding_records', 'gross_amount');
+        $hasFee = Schema::hasColumn('funding_records', 'fee');
+
+        $totalGross = $hasGrossAmount
+            ? FundingRecord::where('customer_id', $customer->id)->where('status', FundingStatus::SUCCESSFUL)->sum('gross_amount')
+            : FundingRecord::where('customer_id', $customer->id)->where('status', FundingStatus::SUCCESSFUL)->sum('amount');
+
+        $totalFee = $hasFee
+            ? FundingRecord::where('customer_id', $customer->id)->where('status', FundingStatus::SUCCESSFUL)->sum('fee')
+            : 0;
+
         $summary = [
             'total_inflow_count' => FundingRecord::where('customer_id', $customer->id)->count(),
-            'total_gross' => FundingRecord::where('customer_id', $customer->id)->where('status', FundingStatus::SUCCESSFUL)->sum('gross_amount'),
-            'total_fee' => FundingRecord::where('customer_id', $customer->id)->where('status', FundingStatus::SUCCESSFUL)->sum('fee'),
+            'total_gross' => $totalGross,
+            'total_fee' => $totalFee,
             'total_net' => FundingRecord::where('customer_id', $customer->id)->where('status', FundingStatus::SUCCESSFUL)->sum('amount'),
             'pending_count' => FundingRecord::where('customer_id', $customer->id)->where('status', FundingStatus::PENDING)->count(),
         ];
@@ -1123,7 +1144,7 @@ class AdminCustomerController extends Controller
                         $inflow->provider_reference ?? '',
                         $inflow->created_at->toDateTimeString(),
                         number_format(($inflow->gross_amount ?? $inflow->amount) / 100, 2, '.', ''),
-                        number_format($inflow->fee / 100, 2, '.', ''),
+                        number_format(($inflow->fee ?? 0) / 100, 2, '.', ''),
                         number_format($inflow->amount / 100, 2, '.', ''),
                         $inflow->sender_name ?? '',
                         $inflow->status->value ?? (string) $inflow->status,
