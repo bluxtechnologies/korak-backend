@@ -35,9 +35,19 @@ class BillService
      */
     public function purchaseBill(Customer $customer, array $data, ?string $idempotencyKey = null): BillOrder
     {
-        $amountInKobo = (int) $data['amount'];
-        $faceAmountInKobo = isset($data['face_amount']) ? (int) $data['face_amount'] : $amountInKobo;
-        $discountInKobo = max(0, $faceAmountInKobo - $amountInKobo);
+        $rawAmount = (int) $data['amount'];
+        $faceAmountInKobo = isset($data['face_amount']) ? (int) $data['face_amount'] : $rawAmount;
+        $category = strtolower((string) ($data['category'] ?? ''));
+
+        // Airtime and mobile data are billed at exact face value (no client-side ₦98 discount)
+        if (in_array($category, ['airtime', 'data'], true) || $faceAmountInKobo > $rawAmount) {
+            $amountInKobo = max($rawAmount, $faceAmountInKobo);
+            $faceAmountInKobo = $amountInKobo;
+            $discountInKobo = 0;
+        } else {
+            $amountInKobo = $rawAmount;
+            $discountInKobo = max(0, $faceAmountInKobo - $amountInKobo);
+        }
 
         $reference = $idempotencyKey ?: 'BIL-'.strtoupper(Str::random(12));
 

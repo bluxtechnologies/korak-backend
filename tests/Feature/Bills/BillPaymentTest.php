@@ -14,13 +14,13 @@ beforeEach(function (): void {
     Cache::flush();
     config([
         'services.finitypay.secret_key' => 'sk_live_test_secret',
-        'services.finitypay.base_url' => 'https://api.cofinance.ng/v1',
+        'services.finitypay.base_url' => 'https://api.finitypay.com.ng/v1',
     ]);
 });
 
 it('fetches bill categories successfully without authentication', function (): void {
     Http::fake([
-        'https://api.cofinance.ng/v1/bills/categories' => Http::response([
+        'https://api.finitypay.com.ng/v1/bills/categories' => Http::response([
             'status' => 'success',
             'message' => 'Bill categories retrieved successfully.',
             'data' => [
@@ -44,7 +44,7 @@ it('fetches bill categories successfully without authentication', function (): v
 
 it('fetches bill services filtered by category', function (): void {
     Http::fake([
-        'https://api.cofinance.ng/v1/bills/services*' => Http::response([
+        'https://api.finitypay.com.ng/v1/bills/services*' => Http::response([
             'status' => 'success',
             'message' => 'Bill services retrieved successfully.',
             'data' => [
@@ -84,7 +84,7 @@ it('validates data bundles query parameter', function (): void {
 
 it('fetches data bundles for a valid service code', function (): void {
     Http::fake([
-        'https://api.cofinance.ng/v1/bills/data-bundles*' => Http::response([
+        'https://api.finitypay.com.ng/v1/bills/data-bundles*' => Http::response([
             'status' => 'success',
             'message' => 'Data bundles retrieved successfully.',
             'data' => [
@@ -126,7 +126,7 @@ it('validates customer identifier for smartcards and meters', function (): void 
     $customer = Customer::factory()->create();
 
     Http::fake([
-        'https://api.cofinance.ng/v1/bills/validate' => Http::response([
+        'https://api.finitypay.com.ng/v1/bills/validate' => Http::response([
             'status' => 'success',
             'message' => 'Customer details validated successfully.',
             'data' => [
@@ -186,7 +186,7 @@ it('successfully processes bill payment and debits customer wallet', function ()
     );
 
     Http::fake([
-        'https://api.cofinance.ng/v1/bills/pay' => Http::response([
+        'https://api.finitypay.com.ng/v1/bills/pay' => Http::response([
             'status' => 'success',
             'message' => 'Bill payment executed successfully.',
             'data' => [
@@ -252,7 +252,7 @@ it('automatically refunds wallet if provider reports immediate failure', functio
     );
 
     Http::fake([
-        'https://api.cofinance.ng/v1/bills/pay' => Http::response([
+        'https://api.finitypay.com.ng/v1/bills/pay' => Http::response([
             'status' => 'error',
             'message' => 'Provider network downtime.',
             'data' => [
@@ -403,4 +403,53 @@ it('retrieves single bill purchase details by reference or ulid and forbids othe
         ->assertJson([
             'code' => 'bill_not_found',
         ]);
+});
+
+it('debits exact 100 naira instead of 98 naira for airtime and data even if client sends discounted amount', function (): void {
+    $customer = Customer::factory()->create();
+    $wallet = app(WalletService::class)->getOrCreateWallet($customer);
+
+    // Fund wallet with 1,000.00 NGN (100,000 kobo)
+    app(WalletService::class)->credit(
+        wallet: $wallet,
+        amount: 100000,
+        type: LedgerEntryType::MANUAL_ADJUSTMENT,
+        description: 'Test wallet funding',
+        reference: 'TEST-FUND-EXACT-001'
+    );
+
+    Http::fake([
+        'https://api.finitypay.com.ng/v1/bills/pay' => Http::response([
+            'status' => 'success',
+            'message' => 'Airtime purchase successful.',
+            'data' => [
+                'reference' => 'BIL-AIRTIME-100',
+                'status' => 'success',
+                'amount' => 100.00,
+            ],
+        ], 200),
+    ]);
+
+    // Client passes 9800 kobo (₦98) with face_amount 10000 kobo (₦100)
+    $response = $this->actingAs($customer, 'customer')
+        ->postJson('/api/v1/bills/pay', [
+            'service_code' => 'MTN_VTU',
+            'service_name' => 'MTN Airtime Topup',
+            'category' => 'airtime',
+            'customer_identifier' => '08031234567',
+            'amount' => 9800, // ₦98 (discounted client attempt)
+            'face_amount' => 10000, // ₦100 face amount
+        ]);
+
+    $response->assertStatus(201);
+
+    // Exact 100 NGN (10,000 kobo) must be debited from wallet, NOT 98 NGN (9,800 kobo)
+    // 100,000 - 10,000 = 90,000 kobo remaining
+    expect($wallet->fresh()->balance)->toBe(90000);
+
+    $billOrder = BillOrder::where('customer_id', $customer->id)->first();
+    expect($billOrder)->not->toBeNull();
+    expect($billOrder->amount)->toBe(10000); // ₦100 charged
+    expect($billOrder->face_amount)->toBe(10000); // ₦100 face
+    expect($billOrder->discount_amount)->toBe(0); // 0 discount
 });
