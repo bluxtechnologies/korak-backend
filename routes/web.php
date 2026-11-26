@@ -94,7 +94,19 @@ Route::prefix('admininistator')->group(function (): void {
         Route::get('customers', [AdminCustomerController::class, 'index'])->name('admin.customers.index');
         Route::get('customers/{customer}', [AdminCustomerController::class, 'show'])->name('admin.customers.show');
         Route::get('customers/{customer}/transactions', [AdminCustomerController::class, 'transactions'])->name('admin.customers.transactions');
+        Route::get('customers/{customer}/transactions/export', [AdminCustomerController::class, 'exportTransactions'])->name('admin.customers.transactions.export');
         Route::get('customers/{customer}/orders', [AdminCustomerController::class, 'orders'])->name('admin.customers.orders');
+        Route::get('customers/{customer}/orders/export', [AdminCustomerController::class, 'exportOrders'])->name('admin.customers.orders.export');
+        Route::get('customers/{customer}/analytics', [AdminCustomerController::class, 'analytics'])->name('admin.customers.analytics');
+        Route::get('customers/{customer}/inflows', [AdminCustomerController::class, 'inflows'])->name('admin.customers.inflows');
+        Route::get('customers/{customer}/inflows/export', [AdminCustomerController::class, 'exportInflows'])->name('admin.customers.inflows.export');
+        Route::post('customers/{customer}/inflows/{fundingRecord}/reconcile', [AdminCustomerController::class, 'reconcileInflow'])->name('admin.customers.inflows.reconcile');
+        Route::get('customers/{customer}/audit-logs', [AdminCustomerController::class, 'auditLogs'])->name('admin.customers.audit-logs');
+        Route::put('customers/{customer}/profile', [AdminCustomerController::class, 'updateProfile'])->name('admin.customers.update-profile');
+        Route::post('customers/{customer}/virtual-account/generate', [AdminCustomerController::class, 'generateVirtualAccount'])->name('admin.customers.generate-virtual-account');
+        Route::post('customers/{customer}/toggle-device-verification', [AdminCustomerController::class, 'toggleDeviceVerification'])->name('admin.customers.toggle-device-verification');
+        Route::post('customers/{customer}/clear-lockout', [AdminCustomerController::class, 'clearLockout'])->name('admin.customers.clear-lockout');
+
         Route::get('customers/{customer}/tickets', [AdminCustomerController::class, 'tickets'])->name('admin.customers.tickets');
         Route::get('customers/{customer}/tickets/{ticket}', [AdminCustomerController::class, 'showTicket'])->name('admin.customers.tickets.show');
         Route::post('customers/{customer}/tickets/{ticket}/reply', [AdminCustomerController::class, 'replyTicket'])->name('admin.customers.tickets.reply');

@@ -209,8 +209,9 @@
     </div>
 </div>
 
-{{-- Adjustment Modal & Script Partials --}}
+{{-- Adjustment & Edit Profile Modals --}}
 @include('admin.customers.partials.credit-debit-modal')
+@include('admin.customers.partials.edit-profile-modal')
 @endsection
 
 @section('scripts')

@@ -74,6 +74,17 @@
                     <ul class="dropdown-menu dropdown-menu-end shadow-sm fs-13">
                         <li>
                             <button type="button"
+                                    class="dropdown-item d-flex align-items-center gap-2 btn-open-edit-profile-modal"
+                                    data-first-name="{{ $customer->first_name ?? '' }}"
+                                    data-last-name="{{ $customer->last_name ?? '' }}"
+                                    data-phone="{{ $customer->phone_number ?: ($customer->phone ?: '') }}"
+                                    data-email="{{ $customer->email }}"
+                                    data-action="{{ route('admin.customers.update-profile', $customer) }}">
+                                <i class="ti ti-user-edit text-info fs-16"></i> Edit Profile Details
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button"
                                     class="dropdown-item d-flex align-items-center gap-2 btn-open-adjust-modal"
                                     data-customer-id="{{ $customer->id }}"
                                     data-customer-name="{{ $fullName }}"
@@ -81,6 +92,30 @@
                                     data-customer-balance="{{ $customer->wallet ? number_format($customer->wallet->balance / 100, 2) : '0.00' }}">
                                 <i class="ti ti-wallet text-primary fs-16"></i> Credit / Debit Balance
                             </button>
+                        </li>
+                        <li>
+                            <form method="POST" action="{{ route('admin.customers.generate-virtual-account', $customer) }}" class="d-inline form-confirm-action" data-confirm-text="Generate or re-sync dedicated virtual account for @{{ $customer->username }} with FinityPay?">
+                                @csrf
+                                <button type="submit" class="dropdown-item d-flex align-items-center gap-2">
+                                    <i class="ti ti-building-bank text-success fs-16"></i> {{ $customer->virtualAccount ? 'Re-sync Virtual Account' : 'Generate Virtual Account' }}
+                                </button>
+                            </form>
+                        </li>
+                        <li>
+                            <form method="POST" action="{{ route('admin.customers.toggle-device-verification', $customer) }}" class="d-inline form-confirm-action" data-confirm-text="{{ $customer->device_verification_enabled ? 'Disable 2FA device verification for @' . $customer->username . '?' : 'Enable 2FA device verification for @' . $customer->username . '?' }}">
+                                @csrf
+                                <button type="submit" class="dropdown-item d-flex align-items-center gap-2">
+                                    <i class="ti ti-shield-lock text-purple fs-16"></i> {{ $customer->device_verification_enabled ? 'Disable 2FA Verification' : 'Enable 2FA Verification' }}
+                                </button>
+                            </form>
+                        </li>
+                        <li>
+                            <form method="POST" action="{{ route('admin.customers.clear-lockout', $customer) }}" class="d-inline form-confirm-action" data-confirm-text="Clear failed login attempts and unlock login cache for @{{ $customer->username }}?">
+                                @csrf
+                                <button type="submit" class="dropdown-item d-flex align-items-center gap-2">
+                                    <i class="ti ti-key-off text-warning fs-16"></i> Clear Login Lockout
+                                </button>
+                            </form>
                         </li>
                         <li>
                             <form method="POST" action="{{ route('admin.customers.send-password-reset', $customer) }}" class="d-inline form-confirm-action" data-confirm-text="Send a secure password reset link to {{ $customer->email }}?">
@@ -178,9 +213,21 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link {{ $activeTab === 'analytics' ? 'active fw-bold text-primary' : 'text-muted' }}"
+                   href="{{ route('admin.customers.analytics', $customer) }}">
+                    <i class="ti ti-chart-infographic me-1"></i> Analytics & Stats
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link {{ $activeTab === 'transactions' ? 'active fw-bold text-primary' : 'text-muted' }}"
                    href="{{ route('admin.customers.transactions', $customer) }}">
                     <i class="ti ti-arrows-left-right me-1"></i> Transactions
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {{ $activeTab === 'inflows' ? 'active fw-bold text-primary' : 'text-muted' }}"
+                   href="{{ route('admin.customers.inflows', $customer) }}">
+                    <i class="ti ti-building-bank me-1"></i> Bank Inflows
                 </a>
             </li>
             <li class="nav-item">
@@ -199,6 +246,12 @@
                     @if(($headerStats['open_tickets_count'] ?? 0) > 0)
                         <span class="badge bg-warning text-dark rounded-pill ms-1">{{ $headerStats['open_tickets_count'] }}</span>
                     @endif
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {{ $activeTab === 'audit-logs' ? 'active fw-bold text-primary' : 'text-muted' }}"
+                   href="{{ route('admin.customers.audit-logs', $customer) }}">
+                    <i class="ti ti-shield-check me-1"></i> Audit Logs & Security
                 </a>
             </li>
         </ul>

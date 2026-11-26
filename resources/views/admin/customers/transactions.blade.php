@@ -132,8 +132,8 @@
             <div class="col-md-2">
                 <input type="date" name="date_to" value="{{ $dateTo }}" class="form-control form-control-sm" title="To Date">
             </div>
-            <div class="col-md-1 d-flex gap-1">
-                <button type="submit" class="btn btn-sm btn-primary w-100" title="Apply Filters">
+            <div class="col-md-2 d-flex gap-1 justify-content-end">
+                <button type="submit" class="btn btn-sm btn-primary" title="Apply Filters">
                     <i class="ti ti-filter"></i>
                 </button>
                 @if($search || $direction || $type || $dateFrom || $dateTo)
@@ -141,6 +141,9 @@
                         <i class="ti ti-x"></i>
                     </a>
                 @endif
+                <a href="{{ route('admin.customers.transactions.export', $customer) }}" class="btn btn-sm btn-outline-success" title="Export to CSV">
+                    <i class="ti ti-file-spreadsheet"></i> Export
+                </a>
             </div>
         </form>
     </div>
@@ -241,8 +244,9 @@
     @endif
 </div>
 
-{{-- Adjustment Modal & Script Partials --}}
+{{-- Adjustment & Edit Profile Modals --}}
 @include('admin.customers.partials.credit-debit-modal')
+@include('admin.customers.partials.edit-profile-modal')
 @endsection
 
 @section('scripts')

@@ -2,20 +2,26 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\AuditEventName;
+use App\Enums\FundingStatus;
 use App\Enums\LedgerDirection;
 use App\Enums\LedgerEntryType;
 use App\Enums\TicketStatus;
 use App\Exceptions\InsufficientBalanceException;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
+use App\Models\AuditEvent;
 use App\Models\BillOrder;
 use App\Models\Customer;
+use App\Models\FundingRecord;
 use App\Models\LedgerEntry;
 use App\Models\SupportTicket;
 use App\Models\SupportTicketMessage;
 use App\Notifications\SupportTicketReplyNotification;
 use App\Notifications\WalletAdjustmentNotification;
+use App\Services\Audit\AuditLogger;
 use App\Services\Auth\LoginLockoutService;
+use App\Services\Providers\FinityPayService;
 use App\Services\Wallet\WalletService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -24,6 +30,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class AdminCustomerController extends Controller
@@ -628,6 +635,508 @@ class AdminCustomerController extends Controller
         }
 
         return redirect()->route('admin.customers.index')->with('success', $message);
+    }
+
+    /**
+     * Display customer analytics, trends, and product breakdown.
+     */
+    public function analytics(Customer $customer, Request $request): View
+    {
+        $headerStats = $this->getCustomerHeaderStats($customer);
+
+        // Financial KPIs
+        $totalDepositsKobo = (int) FundingRecord::where('customer_id', $customer->id)
+            ->where('status', FundingStatus::SUCCESSFUL)
+            ->sum('gross_amount');
+        if ($totalDepositsKobo === 0) {
+            $totalDepositsKobo = (int) FundingRecord::where('customer_id', $customer->id)
+                ->where('status', FundingStatus::SUCCESSFUL)
+                ->sum('amount');
+        }
+
+        $totalSpentKobo = (int) BillOrder::where('customer_id', $customer->id)
+            ->where('status', 'completed')
+            ->sum('amount');
+
+        $totalFeesKobo = (int) FundingRecord::where('customer_id', $customer->id)
+            ->where('status', FundingStatus::SUCCESSFUL)
+            ->sum('fee');
+
+        $totalOrders = BillOrder::where('customer_id', $customer->id)->count();
+        $completedOrders = BillOrder::where('customer_id', $customer->id)->where('status', 'completed')->count();
+        $failedOrders = BillOrder::where('customer_id', $customer->id)->where('status', 'failed')->count();
+        $refundedOrders = BillOrder::where('customer_id', $customer->id)->where('status', 'refunded')->count();
+
+        $successRate = $totalOrders > 0 ? round(($completedOrders / $totalOrders) * 100, 1) : 0;
+        $averageOrderValueKobo = $completedOrders > 0 ? (int) round($totalSpentKobo / $completedOrders) : 0;
+
+        // 6-Month Monthly Trend (Inflows vs Outflows)
+        $monthlyLabels = [];
+        $monthlyInflows = [];
+        $monthlyOutflows = [];
+
+        for ($i = 5; $i >= 0; $i--) {
+            $date = now()->subMonths($i);
+            $monthlyLabels[] = $date->format('M Y');
+
+            $inflowMonth = (float) (FundingRecord::where('customer_id', $customer->id)
+                ->where('status', FundingStatus::SUCCESSFUL)
+                ->whereYear('created_at', $date->year)
+                ->whereMonth('created_at', $date->month)
+                ->sum('amount') / 100);
+
+            $outflowMonth = (float) (BillOrder::where('customer_id', $customer->id)
+                ->where('status', 'completed')
+                ->whereYear('created_at', $date->year)
+                ->whereMonth('created_at', $date->month)
+                ->sum('amount') / 100);
+
+            $monthlyInflows[] = $inflowMonth;
+            $monthlyOutflows[] = $outflowMonth;
+        }
+
+        // Spend by Category
+        $categoriesRaw = BillOrder::where('customer_id', $customer->id)
+            ->where('status', 'completed')
+            ->select('type', DB::raw('SUM(amount) as total_amount'))
+            ->groupBy('type')
+            ->get();
+
+        $categoryLabels = [];
+        $categorySeries = [];
+        foreach ($categoriesRaw as $cat) {
+            $categoryLabels[] = ucfirst(str_replace('_', ' ', (string) $cat->type));
+            $categorySeries[] = (float) round($cat->total_amount / 100, 2);
+        }
+
+        // Top 5 Purchased Services
+        $topServices = BillOrder::where('customer_id', $customer->id)
+            ->where('status', 'completed')
+            ->select('service_name', 'type', DB::raw('COUNT(*) as order_count'), DB::raw('SUM(amount) as total_spent'))
+            ->groupBy('service_name', 'type')
+            ->orderByDesc('order_count')
+            ->limit(5)
+            ->get();
+
+        return view('admin.customers.analytics', [
+            'admin' => $request->user('admin'),
+            'customer' => $customer,
+            'headerStats' => $headerStats,
+            'metrics' => [
+                'total_deposits' => $totalDepositsKobo / 100,
+                'total_spent' => $totalSpentKobo / 100,
+                'total_fees' => $totalFeesKobo / 100,
+                'total_orders' => $totalOrders,
+                'completed_orders' => $completedOrders,
+                'failed_orders' => $failedOrders,
+                'refunded_orders' => $refundedOrders,
+                'success_rate' => $successRate,
+                'average_order_value' => $averageOrderValueKobo / 100,
+            ],
+            'chartData' => [
+                'monthly_labels' => $monthlyLabels,
+                'monthly_inflows' => $monthlyInflows,
+                'monthly_outflows' => $monthlyOutflows,
+                'category_labels' => $categoryLabels,
+                'category_series' => $categorySeries,
+                'order_outcomes' => [$completedOrders, $failedOrders, $refundedOrders],
+            ],
+            'topServices' => $topServices,
+        ]);
+    }
+
+    /**
+     * Display customer bank inflows and fee breakdown.
+     */
+    public function inflows(Customer $customer, Request $request): View
+    {
+        $search = $request->string('search')->trim()->value();
+        $status = $request->string('status')->trim()->value();
+
+        $query = FundingRecord::query()
+            ->where('customer_id', $customer->id)
+            ->latest('id');
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search): void {
+                $q->where('reference', 'like', "%{$search}%")
+                    ->orWhere('provider_reference', 'like', "%{$search}%")
+                    ->orWhere('sender_name', 'like', "%{$search}%");
+            });
+        }
+
+        if ($status !== '') {
+            $query->where('status', $status);
+        }
+
+        $inflows = $query->paginate(20)->withQueryString();
+
+        $headerStats = $this->getCustomerHeaderStats($customer);
+
+        $summary = [
+            'total_inflow_count' => FundingRecord::where('customer_id', $customer->id)->count(),
+            'total_gross' => FundingRecord::where('customer_id', $customer->id)->where('status', FundingStatus::SUCCESSFUL)->sum('gross_amount'),
+            'total_fee' => FundingRecord::where('customer_id', $customer->id)->where('status', FundingStatus::SUCCESSFUL)->sum('fee'),
+            'total_net' => FundingRecord::where('customer_id', $customer->id)->where('status', FundingStatus::SUCCESSFUL)->sum('amount'),
+            'pending_count' => FundingRecord::where('customer_id', $customer->id)->where('status', FundingStatus::PENDING)->count(),
+        ];
+
+        return view('admin.customers.inflows', [
+            'admin' => $request->user('admin'),
+            'customer' => $customer,
+            'headerStats' => $headerStats,
+            'inflows' => $inflows,
+            'summary' => $summary,
+            'search' => $search,
+            'status' => $status,
+        ]);
+    }
+
+    /**
+     * Display security center and audit trail.
+     */
+    public function auditLogs(Customer $customer, Request $request, LoginLockoutService $lockoutService): View
+    {
+        $category = $request->string('category')->trim()->value();
+        $ip = $request->string('ip')->trim()->value();
+
+        $query = AuditEvent::query()
+            ->where(function ($q) use ($customer): void {
+                $q->where(function ($sq) use ($customer): void {
+                    $sq->where('actor_type', Customer::class)
+                        ->orWhere('actor_type', 'customer')
+                        ->where('actor_id', $customer->id);
+                })
+                    ->orWhere(function ($sq) use ($customer): void {
+                        $sq->where('subject_type', Customer::class)
+                            ->orWhere('subject_type', 'customer')
+                            ->where('subject_id', $customer->id);
+                    });
+            })
+            ->latest('occurred_at');
+
+        if ($category !== '') {
+            $query->where('event', 'like', "{$category}.%");
+        }
+
+        if ($ip !== '') {
+            $query->where('ip_address', 'like', "%{$ip}%");
+        }
+
+        $auditLogs = $query->paginate(25)->withQueryString();
+
+        $headerStats = $this->getCustomerHeaderStats($customer);
+
+        $securityState = [
+            'device_verification_enabled' => (bool) $customer->device_verification_enabled,
+            'is_locked' => (bool) $customer->is_locked,
+            'is_lockout_active' => $lockoutService->isLocked($customer),
+            'failed_attempts' => $lockoutService->failedAttempts($customer),
+            'trusted_devices_count' => $customer->trustedDevices()->count(),
+        ];
+
+        return view('admin.customers.audit-logs', [
+            'admin' => $request->user('admin'),
+            'customer' => $customer,
+            'headerStats' => $headerStats,
+            'auditLogs' => $auditLogs,
+            'securityState' => $securityState,
+            'category' => $category,
+            'ip' => $ip,
+        ]);
+    }
+
+    /**
+     * Update customer profile contact details.
+     */
+    public function updateProfile(Customer $customer, Request $request): JsonResponse|RedirectResponse
+    {
+        $validated = $request->validate([
+            'first_name' => ['nullable', 'string', 'max:60'],
+            'last_name' => ['nullable', 'string', 'max:60'],
+            'phone_number' => ['nullable', 'string', 'max:20'],
+            'email' => ['required', 'email', 'max:255', 'unique:customers,email,'.$customer->id],
+        ]);
+
+        $changes = [];
+        foreach ($validated as $key => $val) {
+            if ($customer->{$key} !== $val) {
+                $changes[$key] = ['old' => $customer->{$key}, 'new' => $val];
+            }
+        }
+
+        $customer->fill($validated);
+        if (isset($validated['phone_number'])) {
+            $customer->phone = $validated['phone_number'];
+        }
+        $customer->save();
+
+        if (! empty($changes)) {
+            /** @var Admin|null $admin */
+            $admin = $request->user('admin');
+            app(AuditLogger::class)->log(
+                event: AuditEventName::PROFILE_UPDATED,
+                actor: $admin,
+                subject: $customer,
+                metadata: [
+                    'updated_by' => 'admin',
+                    'admin_username' => $admin?->username,
+                    'changes' => $changes,
+                ]
+            );
+        }
+
+        $message = "Profile for @{$customer->username} updated successfully.";
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => $message,
+                'customer' => $customer,
+            ]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Generate or re-sync dedicated virtual account.
+     */
+    public function generateVirtualAccount(
+        Customer $customer,
+        Request $request,
+        FinityPayService $finityPayService,
+        WalletService $walletService
+    ): JsonResponse|RedirectResponse {
+        $wallet = $walletService->getOrCreateWallet($customer);
+        $phone = $customer->phone_number ?: $customer->phone;
+
+        $res = $finityPayService->createVirtualAccount($customer, $wallet, $phone);
+
+        if (($res['status'] ?? '') === 'success') {
+            $accNumber = $res['data']['account_number'] ?? 'Virtual Account';
+            $bankName = $res['data']['bank_name'] ?? 'Bank';
+            $message = "Dedicated account generated successfully: {$bankName} - {$accNumber}.";
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => $message,
+                    'virtual_account' => $customer->fresh()->virtualAccount,
+                ]);
+            }
+
+            return back()->with('success', $message);
+        }
+
+        $errorMsg = $res['message'] ?? 'Failed to generate dedicated virtual account with provider.';
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $errorMsg,
+            ], 422);
+        }
+
+        return back()->with('error', $errorMsg);
+    }
+
+    /**
+     * Toggle 2FA device verification.
+     */
+    public function toggleDeviceVerification(Customer $customer, Request $request): JsonResponse|RedirectResponse
+    {
+        $customer->device_verification_enabled = ! $customer->device_verification_enabled;
+        $customer->save();
+
+        $statusStr = $customer->device_verification_enabled ? 'enabled' : 'disabled';
+        $message = "2FA Device Verification has been {$statusStr} for @{$customer->username}.";
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'status' => 'success',
+                'device_verification_enabled' => $customer->device_verification_enabled,
+                'message' => $message,
+            ]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Clear login lockouts and failed attempts counter.
+     */
+    public function clearLockout(Customer $customer, Request $request, LoginLockoutService $lockoutService): JsonResponse|RedirectResponse
+    {
+        $lockoutService->unlock($customer);
+
+        $message = "Login lockout and failed attempts counter cleared for @{$customer->username}.";
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => $message,
+            ]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Reconcile a bank inflow directly with the payment provider.
+     */
+    public function reconcileInflow(
+        Customer $customer,
+        FundingRecord $fundingRecord,
+        Request $request,
+        FinityPayService $finityPayService,
+        WalletService $walletService
+    ): JsonResponse|RedirectResponse {
+        if ($fundingRecord->customer_id !== $customer->id) {
+            abort(404);
+        }
+
+        if ($fundingRecord->status === FundingStatus::SUCCESSFUL) {
+            $msg = "Inflow #{$fundingRecord->reference} is already completed.";
+
+            return $request->expectsJson() ? response()->json(['status' => 'info', 'message' => $msg]) : back()->with('info', $msg);
+        }
+
+        $lookupRef = $fundingRecord->provider_reference ?: $fundingRecord->reference;
+        $verifyRes = $finityPayService->verifyPayment($lookupRef);
+
+        if (($verifyRes['status'] ?? '') === 'success') {
+            $fundingRecord->update([
+                'status' => FundingStatus::SUCCESSFUL,
+                'processed_at' => now(),
+            ]);
+
+            $wallet = $walletService->getOrCreateWallet($customer);
+            $walletService->credit(
+                wallet: $wallet,
+                amount: $fundingRecord->amount,
+                type: LedgerEntryType::FUNDING,
+                reference: $fundingRecord->reference,
+                description: "Bank transfer deposit reconciled (Ref: {$fundingRecord->reference})"
+            );
+
+            $msg = "Inflow #{$fundingRecord->reference} verified and customer wallet credited successfully.";
+
+            return $request->expectsJson() ? response()->json(['status' => 'success', 'message' => $msg]) : back()->with('success', $msg);
+        }
+
+        $errMsg = $verifyRes['message'] ?? 'Provider reported transaction as unconfirmed or not found.';
+
+        return $request->expectsJson()
+            ? response()->json(['status' => 'error', 'message' => $errMsg], 422)
+            : back()->with('error', $errMsg);
+    }
+
+    /**
+     * Stream CSV export of customer ledger transactions.
+     */
+    public function exportTransactions(Customer $customer): StreamedResponse
+    {
+        $fileName = 'transactions_'.$customer->username.'_'.now()->format('Ymd_His').'.csv';
+
+        $callback = function () use ($customer): void {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['ID', 'Reference', 'Date', 'Type', 'Direction', 'Amount (NGN)', 'Balance Before (NGN)', 'Balance After (NGN)', 'Description']);
+
+            $customer->wallet?->ledgerEntries()->orderBy('id')->chunk(500, function ($entries) use ($handle): void {
+                foreach ($entries as $e) {
+                    $balanceBefore = ($e->direction === LedgerDirection::CREDIT)
+                        ? ($e->balance_after - $e->amount)
+                        : ($e->balance_after + $e->amount);
+
+                    fputcsv($handle, [
+                        $e->id,
+                        $e->reference,
+                        $e->created_at->toDateTimeString(),
+                        $e->type->value ?? 'entry',
+                        $e->direction->value ?? '',
+                        number_format($e->amount / 100, 2, '.', ''),
+                        number_format($balanceBefore / 100, 2, '.', ''),
+                        number_format($e->balance_after / 100, 2, '.', ''),
+                        $e->description ?? '',
+                    ]);
+                }
+            });
+
+            fclose($handle);
+        };
+
+        return response()->streamDownload($callback, $fileName, [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    /**
+     * Stream CSV export of customer bill orders.
+     */
+    public function exportOrders(Customer $customer): StreamedResponse
+    {
+        $fileName = 'orders_'.$customer->username.'_'.now()->format('Ymd_His').'.csv';
+
+        $callback = function () use ($customer): void {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['ID', 'Reference', 'Date', 'Service', 'Type', 'Identifier', 'Amount (NGN)', 'Status']);
+
+            $customer->billOrders()->orderBy('id')->chunk(500, function ($orders) use ($handle): void {
+                foreach ($orders as $o) {
+                    fputcsv($handle, [
+                        $o->id,
+                        $o->reference,
+                        $o->created_at->toDateTimeString(),
+                        $o->service_name,
+                        $o->type,
+                        $o->customer_identifier,
+                        number_format($o->amount / 100, 2, '.', ''),
+                        $o->status,
+                    ]);
+                }
+            });
+
+            fclose($handle);
+        };
+
+        return response()->streamDownload($callback, $fileName, [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    /**
+     * Stream CSV export of customer bank inflows.
+     */
+    public function exportInflows(Customer $customer): StreamedResponse
+    {
+        $fileName = 'inflows_'.$customer->username.'_'.now()->format('Ymd_His').'.csv';
+
+        $callback = function () use ($customer): void {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['ID', 'Reference', 'Provider Ref', 'Date', 'Gross (NGN)', 'Fee (NGN)', 'Net (NGN)', 'Sender Name', 'Status']);
+
+            FundingRecord::where('customer_id', $customer->id)->orderBy('id')->chunk(500, function ($inflows) use ($handle): void {
+                foreach ($inflows as $inflow) {
+                    fputcsv($handle, [
+                        $inflow->id,
+                        $inflow->reference,
+                        $inflow->provider_reference ?? '',
+                        $inflow->created_at->toDateTimeString(),
+                        number_format(($inflow->gross_amount ?? $inflow->amount) / 100, 2, '.', ''),
+                        number_format($inflow->fee / 100, 2, '.', ''),
+                        number_format($inflow->amount / 100, 2, '.', ''),
+                        $inflow->sender_name ?? '',
+                        $inflow->status->value ?? (string) $inflow->status,
+                    ]);
+                }
+            });
+
+            fclose($handle);
+        };
+
+        return response()->streamDownload($callback, $fileName, [
+            'Content-Type' => 'text/csv',
+        ]);
     }
 
     /**

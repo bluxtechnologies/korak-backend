@@ -135,6 +135,20 @@
             });
         });
 
+        // Open Edit Profile Modal
+        $(document).on('click', '.btn-open-edit-profile-modal', function (e) {
+            e.preventDefault();
+            const btn = $(this);
+            $('#edit_first_name').val(btn.data('first-name') || '');
+            $('#edit_last_name').val(btn.data('last-name') || '');
+            $('#edit_phone_number').val(btn.data('phone') || '');
+            $('#edit_email').val(btn.data('email') || '');
+            $('#form-edit-profile').attr('action', btn.data('action'));
+
+            const modal = new bootstrap.Modal(document.getElementById('modalEditProfile'));
+            modal.show();
+        });
+
         // Customer Delete SweetAlert Confirmation
         $(document).on('click', '.btn-delete-profile, .btn-delete-customer', function (e) {
             e.preventDefault();

@@ -140,15 +140,18 @@
                     <option value="cable_tv" {{ $category === 'cable_tv' ? 'selected' : '' }}>Cable TV</option>
                 </select>
             </div>
-            <div class="col-md-1 d-flex gap-1">
-                <button type="submit" class="btn btn-sm btn-primary w-100" title="Filter Orders">
-                    <i class="ti ti-filter"></i>
+            <div class="col-md-4 d-flex gap-1 justify-content-end">
+                <button type="submit" class="btn btn-sm btn-primary" title="Filter Orders">
+                    <i class="ti ti-filter"></i> Filter
                 </button>
                 @if($search || $status || $category)
                     <a href="{{ route('admin.customers.orders', $customer) }}" class="btn btn-sm btn-outline-secondary" title="Reset Filters">
                         <i class="ti ti-x"></i>
                     </a>
                 @endif
+                <a href="{{ route('admin.customers.orders.export', $customer) }}" class="btn btn-sm btn-outline-success" title="Export to CSV">
+                    <i class="ti ti-file-spreadsheet"></i> Export CSV
+                </a>
             </div>
         </form>
     </div>
@@ -258,8 +261,9 @@
     @endif
 </div>
 
-{{-- Adjustment Modal & Script Partials --}}
+{{-- Adjustment & Edit Profile Modals --}}
 @include('admin.customers.partials.credit-debit-modal')
+@include('admin.customers.partials.edit-profile-modal')
 @endsection
 
 @section('scripts')

@@ -317,6 +317,17 @@
                                             @endphp
                                             <li>
                                                 <button type="button"
+                                                        class="dropdown-item d-flex align-items-center gap-2 btn-open-edit-profile-modal"
+                                                        data-first-name="{{ $customer->first_name ?? '' }}"
+                                                        data-last-name="{{ $customer->last_name ?? '' }}"
+                                                        data-phone="{{ $customer->phone_number ?: ($customer->phone ?: '') }}"
+                                                        data-email="{{ $customer->email }}"
+                                                        data-action="{{ route('admin.customers.update-profile', $customer) }}">
+                                                    <i class="ti ti-user-edit text-info fs-16"></i> Edit Profile
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <button type="button"
                                                         class="dropdown-item d-flex align-items-center gap-2 btn-open-adjust-modal"
                                                         data-customer-id="{{ $customer->id }}"
                                                         data-customer-name="{{ $custFullName }}"
@@ -326,8 +337,18 @@
                                                 </button>
                                             </li>
                                             <li>
+                                                <a class="dropdown-item d-flex align-items-center gap-2" href="{{ route('admin.customers.analytics', $customer) }}">
+                                                    <i class="ti ti-chart-infographic text-purple fs-16"></i> Analytics & Stats
+                                                </a>
+                                            </li>
+                                            <li>
                                                 <a class="dropdown-item d-flex align-items-center gap-2" href="{{ route('admin.customers.transactions', $customer) }}">
                                                     <i class="ti ti-arrows-left-right text-info fs-16"></i> View Transactions
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a class="dropdown-item d-flex align-items-center gap-2" href="{{ route('admin.customers.inflows', $customer) }}">
+                                                    <i class="ti ti-building-bank text-primary fs-16"></i> Bank Inflows
                                                 </a>
                                             </li>
                                             <li>
@@ -403,6 +424,7 @@
 
 {{-- Manual Adjustment Modal --}}
 @include('admin.customers.partials.credit-debit-modal')
+@include('admin.customers.partials.edit-profile-modal')
 @endsection
 
 @section('scripts')
