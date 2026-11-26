@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\Profile\ProfileController;
 use App\Http\Controllers\Api\V1\Profile\SecurityActivityController;
 use App\Http\Controllers\Api\V1\Profile\SessionController;
 use App\Http\Controllers\Api\V1\Support\SupportTicketController;
+use App\Http\Controllers\Api\V1\Wallet\DepositController;
 use App\Http\Controllers\Api\V1\Wallet\FundingController;
 use App\Http\Controllers\Api\V1\Wallet\VirtualAccountController;
 use App\Http\Controllers\Api\V1\Wallet\WalletController;
@@ -118,6 +119,13 @@ Route::prefix('v1')
                 Route::get('dedicated-account', [VirtualAccountController::class, 'show'])->name('dedicated-account.show');
                 Route::post('dedicated-account', [VirtualAccountController::class, 'store'])->name('dedicated-account.store');
                 Route::get('transactions', [WalletController::class, 'transactions'])->name('transactions');
+
+                // Deposit Modal & Fee Endpoints
+                Route::prefix('deposit')->name('deposit.')->group(function (): void {
+                    Route::get('tiers', [DepositController::class, 'tiers'])->name('tiers');
+                    Route::post('calculate', [DepositController::class, 'calculate'])->name('calculate');
+                    Route::post('initiate', [DepositController::class, 'initiate'])->name('initiate');
+                });
             });
 
         // Bills & VTU (Airtime, Data, Utilities, Cable TV)

@@ -19,6 +19,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $reference
  * @property string|null $provider_reference
  * @property int $amount
+ * @property int|null $gross_amount
+ * @property int $fee
  * @property string $currency
  * @property FundingStatus $status
  * @property string|null $checkout_url
@@ -57,6 +59,8 @@ class FundingRecord extends Model
         'reference',
         'provider_reference',
         'amount',
+        'gross_amount',
+        'fee',
         'currency',
         'status',
         'checkout_url',
@@ -75,6 +79,8 @@ class FundingRecord extends Model
         return [
             'status' => FundingStatus::class,
             'amount' => 'integer',
+            'gross_amount' => 'integer',
+            'fee' => 'integer',
             'metadata' => 'array',
             'processed_at' => 'datetime',
         ];

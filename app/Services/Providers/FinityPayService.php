@@ -11,6 +11,7 @@ use App\Models\FundingRecord;
 use App\Models\FundingWebhookEvent;
 use App\Models\Wallet;
 use App\Notifications\WalletFundedNotification;
+use App\Services\Wallet\TransactionFeeService;
 use App\Services\Wallet\WalletService;
 use Exception;
 use GuzzleHttp\Exception\ConnectException;
@@ -29,6 +30,7 @@ class FinityPayService
      */
     public function __construct(
         protected WalletService $walletService,
+        protected TransactionFeeService $feeService,
     ) {}
 
     /**
@@ -1258,7 +1260,9 @@ class FinityPayService
             return false;
         }
 
-        $amountInKobo = (int) round($grossAmountNgn * 100);
+        $grossAmountInKobo = (int) round($grossAmountNgn * 100);
+        $feeInKobo = $this->feeService->calculateFee($grossAmountInKobo, 'deposit');
+        $netAmountInKobo = max(0, $grossAmountInKobo - $feeInKobo);
 
         // Match FundingRecord by reference or provider reference
         /** @var FundingRecord|null $fundingRecord */
@@ -1294,7 +1298,9 @@ class FinityPayService
                     'provider' => 'finitypay',
                     'reference' => 'KORAK-FUND-'.strtoupper($eventId),
                     'provider_reference' => $reference,
-                    'amount' => $amountInKobo,
+                    'amount' => $netAmountInKobo,
+                    'gross_amount' => $grossAmountInKobo,
+                    'fee' => $feeInKobo,
                     'currency' => 'NGN',
                     'status' => FundingStatus::PENDING,
                     'sender_name' => $senderName,
@@ -1324,7 +1330,9 @@ class FinityPayService
                     'provider' => 'finitypay',
                     'reference' => 'KORAK-FUND-'.strtoupper($eventId),
                     'provider_reference' => $reference,
-                    'amount' => $amountInKobo,
+                    'amount' => $netAmountInKobo,
+                    'gross_amount' => $grossAmountInKobo,
+                    'fee' => $feeInKobo,
                     'currency' => 'NGN',
                     'status' => FundingStatus::PENDING,
                     'sender_name' => $senderName,
@@ -1355,19 +1363,25 @@ class FinityPayService
         $wallet = $fundingRecord->wallet;
         $this->walletService->credit(
             wallet: $wallet,
-            amount: $amountInKobo,
+            amount: $netAmountInKobo,
             type: LedgerEntryType::FUNDING,
-            description: "Wallet Funding via FinityPay [Ref: {$reference}]",
+            description: 'Wallet Funding via FinityPay (Gross: ₦'.number_format($grossAmountInKobo / 100, 2).', Fee: ₦'.number_format($feeInKobo / 100, 2).") [Ref: {$reference}]",
             reference: $fundingRecord->reference,
             metadata: [
                 'provider' => 'finitypay',
                 'event_id' => $eventId,
                 'sender_name' => $senderName,
+                'gross_amount' => $grossAmountInKobo,
+                'fee' => $feeInKobo,
+                'net_amount' => $netAmountInKobo,
             ]
         );
 
         $fundingRecord->update([
             'status' => FundingStatus::SUCCESSFUL,
+            'amount' => $netAmountInKobo,
+            'gross_amount' => $grossAmountInKobo,
+            'fee' => $feeInKobo,
             'provider_reference' => $reference,
             'sender_name' => $senderName,
             'processed_at' => now(),
@@ -1382,7 +1396,7 @@ class FinityPayService
         // Dispatch queued notification to the customer
         $customer = $fundingRecord->customer;
         $customer->notify(new WalletFundedNotification(
-            amountInKobo: $amountInKobo,
+            amountInKobo: $netAmountInKobo,
             currency: $fundingRecord->currency,
             reference: $fundingRecord->reference
         ));

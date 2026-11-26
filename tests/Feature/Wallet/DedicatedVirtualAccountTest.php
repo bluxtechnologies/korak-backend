@@ -230,7 +230,8 @@ it('auto-credits wallet via webhook when payment arrives using account_number', 
             'status' => 'success',
         ]);
 
-    expect($wallet->fresh()->balance)->toBe(1000000); // ₦10,000.00
+    // ₦10,000 gross transfer - ₦75 fee = ₦9,925 net credited (992,500 kobo)
+    expect($wallet->fresh()->balance)->toBe(992500);
 });
 
 it('generates mock dedicated account when mock mode is enabled', function (): void {

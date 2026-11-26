@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $device_name
  * @property string|null $ip_address
  * @property Carbon|null $last_used_at
+ * @property Carbon|null $last_seen_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read Customer $customer
@@ -44,6 +45,7 @@ class CustomerTrustedDevice extends Model
         'device_name',
         'ip_address',
         'last_used_at',
+        'last_seen_at',
     ];
 
     /**
@@ -64,6 +66,7 @@ class CustomerTrustedDevice extends Model
     {
         return [
             'last_used_at' => 'datetime',
+            'last_seen_at' => 'datetime',
         ];
     }
 
@@ -78,10 +81,14 @@ class CustomerTrustedDevice extends Model
     }
 
     /**
-     * Compatibility accessor for last_seen_at.
+     * Accessor for last_seen_at with fallback to last_used_at or updated_at.
      */
-    public function getLastSeenAtAttribute(): ?Carbon
+    public function getLastSeenAtAttribute(?string $value = null): ?Carbon
     {
+        if ($value !== null) {
+            return Carbon::parse($value);
+        }
+
         return $this->last_used_at ?? $this->updated_at;
     }
 }

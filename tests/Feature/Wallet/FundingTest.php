@@ -193,8 +193,8 @@ it('processes webhook with valid signature and credits customer wallet per Roadm
             'message' => 'Webhook received.',
         ]);
 
-    // Wallet is credited
-    expect($wallet->fresh()->balance)->toBe(50000)
+    // Wallet is credited with net amount (500 NGN gross - 20 NGN fee = 480 NGN / 48000 kobo)
+    expect($wallet->fresh()->balance)->toBe(48000)
         ->and($fundingRecord->fresh()->status)->toBe(FundingStatus::SUCCESSFUL);
 
     // Notification is dispatched
