@@ -60,6 +60,13 @@
                 </a>
             </li>
 
+            <li class="side-nav-item {{ request()->routeIs('admin.services*') ? 'active' : '' }}">
+                <a href="{{ route('admin.services.index') }}" class="side-nav-link {{ request()->routeIs('admin.services*') ? 'active' : '' }}">
+                    <span class="menu-icon"><i class="ti ti-apps"></i></span>
+                    <span class="menu-text"> Korak Services </span>
+                </a>
+            </li>
+
             <li class="side-nav-title mt-2">System & Maintenance</li>
 
             <li class="side-nav-item {{ request()->routeIs('admin.failed-jobs*') ? 'active' : '' }}">

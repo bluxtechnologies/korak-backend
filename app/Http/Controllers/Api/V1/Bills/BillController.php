@@ -10,6 +10,7 @@ use App\Http\Resources\Api\V1\BillOrderResource;
 use App\Http\Responses\ApiResponse;
 use App\Models\BillOrder;
 use App\Models\Customer;
+use App\Models\WebsiteService;
 use App\Services\Bills\BillService;
 use App\Services\Providers\FinityPayService;
 use Illuminate\Http\JsonResponse;
@@ -53,6 +54,16 @@ class BillController extends Controller
     public function services(Request $request): JsonResponse
     {
         $category = $request->query('category');
+        if (is_string($category) && $category !== '' && ! WebsiteService::isServiceActive($category)) {
+            $svc = WebsiteService::findByCode($category);
+
+            return ApiResponse::error(
+                message: $svc?->maintenance_message ?: "The {$category} service is currently unavailable.",
+                code: 'service_unavailable',
+                status: 503
+            );
+        }
+
         $services = $this->finityPayService->getBillServices(is_string($category) ? $category : null);
 
         if (isset($services['status']) && $services['status'] === 'error') {
@@ -74,6 +85,16 @@ class BillController extends Controller
      */
     public function dataBundles(Request $request): JsonResponse
     {
+        if (! WebsiteService::isServiceActive('data')) {
+            $svc = WebsiteService::findByCode('data');
+
+            return ApiResponse::error(
+                message: $svc?->maintenance_message ?: 'Data bundle purchase is currently unavailable.',
+                code: 'service_unavailable',
+                status: 503
+            );
+        }
+
         $serviceCode = (string) $request->query('service_code');
 
         if ($serviceCode === '') {
@@ -130,6 +151,19 @@ class BillController extends Controller
      */
     public function pay(PayBillRequest $request): JsonResponse
     {
+        $validated = $request->validated();
+        $category = strtolower((string) ($validated['category'] ?? ''));
+
+        if ($category !== '' && ! WebsiteService::isServiceActive($category)) {
+            $svc = WebsiteService::findByCode($category);
+
+            return ApiResponse::error(
+                message: $svc?->maintenance_message ?: "The {$category} service is currently unavailable. Please check back later.",
+                code: 'service_unavailable',
+                status: 503
+            );
+        }
+
         /** @var Customer $customer */
         $customer = $request->user('customer');
 
@@ -138,7 +172,7 @@ class BillController extends Controller
         try {
             $billOrder = $this->billService->purchaseBill(
                 customer: $customer,
-                data: $request->validated(),
+                data: $validated,
                 idempotencyKey: is_string($idempotencyKey) ? $idempotencyKey : null
             );
 

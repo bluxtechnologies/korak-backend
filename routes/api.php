@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\V1\Wallet\FundingController;
 use App\Http\Controllers\Api\V1\Wallet\VirtualAccountController;
 use App\Http\Controllers\Api\V1\Wallet\WalletController;
 use App\Http\Controllers\Api\V1\Webhooks\FinityPayWebhookController;
+use App\Http\Controllers\ServiceController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
@@ -30,6 +31,10 @@ Route::prefix('v1')
     ->name('api.v1.')
     ->group(function (): void {
         Route::get('health', HealthController::class)->name('health');
+
+        // Platform & Website Services Availability
+        Route::get('services', [ServiceController::class, 'apiIndex'])->name('services.index');
+        Route::get('services/{code}', [ServiceController::class, 'apiShow'])->name('services.show');
 
         Route::get('diagnostics', function () {
             $hasSessions = false;

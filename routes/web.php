@@ -3,7 +3,9 @@
 use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminCustomerController;
 use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\AdminServiceController;
 use App\Http\Controllers\Api\V1\Webhooks\FinityPayWebhookController;
+use App\Http\Controllers\ServiceController;
 use App\Models\Customer;
 use App\Notifications\DeviceVerificationOtpNotification;
 use App\Notifications\DeviceVerifiedNotification;
@@ -18,6 +20,9 @@ Route::get('/', function () {
         'message' => 'Korak API is running.',
     ]);
 });
+
+// Public Website Service Availability Page
+Route::get('services/{code}', [ServiceController::class, 'show'])->name('services.show');
 
 // FinityPay / CoFinance Webhook endpoints at root (matching dashboard configuration)
 Route::post('webhooks/cofinance', FinityPayWebhookController::class)->name('webhooks.cofinance.root');
@@ -118,5 +123,12 @@ Route::prefix('admininistator')->group(function (): void {
         Route::post('customers/{customer}/send-password-reset', [AdminCustomerController::class, 'sendPasswordReset'])->name('admin.customers.send-password-reset');
         Route::post('customers/{customer}/terminate-sessions', [AdminCustomerController::class, 'terminateSessions'])->name('admin.customers.terminate-sessions');
         Route::delete('customers/{customer}', [AdminCustomerController::class, 'destroy'])->name('admin.customers.destroy');
+
+        // Korak Services Management
+        Route::get('services', [AdminServiceController::class, 'index'])->name('admin.services.index');
+        Route::post('services', [AdminServiceController::class, 'store'])->name('admin.services.store');
+        Route::post('services/{service}/toggle', [AdminServiceController::class, 'toggle'])->name('admin.services.toggle');
+        Route::put('services/{service}', [AdminServiceController::class, 'update'])->name('admin.services.update');
+        Route::get('services/{service}/preview', [AdminServiceController::class, 'preview'])->name('admin.services.preview');
     });
 });
