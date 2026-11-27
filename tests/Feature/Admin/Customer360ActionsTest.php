@@ -294,3 +294,45 @@ it('allows admin to terminate customer active sessions and trusted devices', fun
 
     expect($customer->trustedDevices()->count())->toBe(0);
 });
+
+it('resolves customer by both numeric ID and ULID for wallet adjustment and actions', function (): void {
+    $admin = Admin::factory()->create();
+    $customer = Customer::factory()->create(['username' => 'dual_id_user']);
+    $wallet = Wallet::factory()->create(['customer_id' => $customer->id, 'balance' => 50000]); // ₦500.00
+
+    // Test with numeric ID in URL
+    $responseId = $this->actingAs($admin, 'admin')
+        ->postJson("/admininistator/customers/{$customer->id}/wallet/adjust", [
+            'action' => 'debit',
+            'amount' => '200.00',
+            'reason' => 'correction of failed order by numeric ID',
+            'notify' => 0,
+        ]);
+
+    $responseId->assertOk()
+        ->assertJson([
+            'status' => 'success',
+            'data' => [
+                'balance_kobo' => 30000,
+                'balance_formatted' => '₦300.00',
+            ],
+        ]);
+
+    // Test with ULID in URL
+    $responseUlid = $this->actingAs($admin, 'admin')
+        ->postJson("/admininistator/customers/{$customer->ulid}/wallet/adjust", [
+            'action' => 'credit',
+            'amount' => '100.00',
+            'reason' => 'topup by ULID',
+            'notify' => 0,
+        ]);
+
+    $responseUlid->assertOk()
+        ->assertJson([
+            'status' => 'success',
+            'data' => [
+                'balance_kobo' => 40000,
+                'balance_formatted' => '₦400.00',
+            ],
+        ]);
+});

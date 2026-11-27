@@ -7,13 +7,14 @@
         $(document).on('click', '.btn-open-adjust-modal', function (e) {
             e.preventDefault();
             const customerId = $(this).data('customer-id');
+            const actionUrl = $(this).data('action') || `/admininistator/customers/${customerId}/wallet/adjust`;
             const customerName = $(this).data('customer-name');
             const customerUsername = $(this).data('customer-username');
             const customerBalance = $(this).data('customer-balance');
 
             currentRawBalance = parseFloat(String(customerBalance).replace(/,/g, '')) || 0;
 
-            $('#adjustWalletForm').attr('action', `/admininistator/customers/${customerId}/wallet/adjust`);
+            $('#adjustWalletForm').attr('action', actionUrl);
             $('#modal-customer-name').text(customerName);
             $('#modal-customer-username').text(`@${customerUsername}`);
             $('#modal-customer-balance').text(`₦${currentRawBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
@@ -153,6 +154,7 @@
         $(document).on('click', '.btn-delete-profile, .btn-delete-customer', function (e) {
             e.preventDefault();
             const customerId = $(this).data('id');
+            const actionUrl = $(this).data('action') || `/admininistator/customers/${customerId}`;
             const username = $(this).data('username');
 
             Swal.fire({
@@ -167,7 +169,7 @@
             }).then((result) => {
                 if (result.isConfirmed) {
                     const form = $('<form>', {
-                        action: `/admininistator/customers/${customerId}`,
+                        action: actionUrl,
                         method: 'POST'
                     }).append(
                         $('<input>', { type: 'hidden', name: '_token', value: $('meta[name="csrf-token"]').attr('content') }),

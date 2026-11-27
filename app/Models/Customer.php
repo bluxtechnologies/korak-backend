@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -226,5 +227,28 @@ class Customer extends Authenticatable
     public function fundingRecords(): HasMany
     {
         return $this->hasMany(FundingRecord::class);
+    }
+
+    /**
+     * Retrieve the model for a bound value.
+     * Resolves the customer by either its public ULID or its internal numeric ID.
+     *
+     * @param  mixed  $value
+     * @param  string|null  $field
+     * @return Model|null
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        if ($field) {
+            return $this->where($field, $value)->first();
+        }
+
+        return $this->where('ulid', $value)
+            ->orWhere(function ($query) use ($value) {
+                if (is_numeric($value)) {
+                    $query->where('id', (int) $value);
+                }
+            })
+            ->first();
     }
 }

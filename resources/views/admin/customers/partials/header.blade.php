@@ -57,7 +57,8 @@
             <div class="d-flex align-items-center gap-2 flex-wrap">
                 <button type="button"
                         class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1 btn-open-adjust-modal"
-                        data-customer-id="{{ $customer->id }}"
+                        data-action="{{ route('admin.customers.wallet.adjust', $customer) }}"
+                        data-customer-id="{{ $customer->ulid }}"
                         data-customer-name="{{ $fullName }}"
                         data-customer-username="{{ $customer->username }}"
                         data-customer-balance="{{ $customer->wallet ? number_format($customer->wallet->balance / 100, 2) : '0.00' }}">
@@ -86,7 +87,8 @@
                         <li>
                             <button type="button"
                                     class="dropdown-item d-flex align-items-center gap-2 btn-open-adjust-modal"
-                                    data-customer-id="{{ $customer->id }}"
+                                    data-action="{{ route('admin.customers.wallet.adjust', $customer) }}"
+                                    data-customer-id="{{ $customer->ulid }}"
                                     data-customer-name="{{ $fullName }}"
                                     data-customer-username="{{ $customer->username }}"
                                     data-customer-balance="{{ $customer->wallet ? number_format($customer->wallet->balance / 100, 2) : '0.00' }}">
@@ -154,7 +156,7 @@
                             </form>
                         </li>
                         <li>
-                            <button type="button" class="dropdown-item d-flex align-items-center gap-2 text-danger btn-delete-profile" data-id="{{ $customer->id }}" data-username="{{ $customer->username }}">
+                            <button type="button" class="dropdown-item d-flex align-items-center gap-2 text-danger btn-delete-profile" data-action="{{ route('admin.customers.destroy', $customer) }}" data-id="{{ $customer->ulid }}" data-username="{{ $customer->username }}">
                                 <i class="ti ti-trash fs-16"></i> Delete Customer
                             </button>
                         </li>

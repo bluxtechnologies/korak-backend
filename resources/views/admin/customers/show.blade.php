@@ -144,7 +144,8 @@
                         </div>
                         <button type="button"
                                 class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1 btn-open-adjust-modal"
-                                data-customer-id="{{ $customer->id }}"
+                                data-action="{{ route('admin.customers.wallet.adjust', $customer) }}"
+                                data-customer-id="{{ $customer->ulid }}"
                                 data-customer-name="{{ trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) ?: $customer->username }}"
                                 data-customer-username="{{ $customer->username }}"
                                 data-customer-balance="{{ number_format($customer->wallet->balance / 100, 2) }}">

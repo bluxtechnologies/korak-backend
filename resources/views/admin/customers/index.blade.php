@@ -329,7 +329,8 @@
                                             <li>
                                                 <button type="button"
                                                         class="dropdown-item d-flex align-items-center gap-2 btn-open-adjust-modal"
-                                                        data-customer-id="{{ $customer->id }}"
+                                                        data-action="{{ route('admin.customers.wallet.adjust', $customer) }}"
+                                                        data-customer-id="{{ $customer->ulid }}"
                                                         data-customer-name="{{ $custFullName }}"
                                                         data-customer-username="{{ $customer->username }}"
                                                         data-customer-balance="{{ $custBal }}">
@@ -365,7 +366,9 @@
                                             <li>
                                                 <button type="button"
                                                         class="dropdown-item d-flex align-items-center gap-2 {{ $customer->is_locked ? 'text-success' : 'text-warning' }} btn-toggle-lock"
-                                                        data-id="{{ $customer->id }}"
+                                                        data-action="{{ route('admin.customers.toggle-lock', $customer) }}"
+                                                        data-id="{{ $customer->ulid }}"
+                                                        data-row-id="{{ $customer->id }}"
                                                         data-username="{{ $customer->username }}"
                                                         data-locked="{{ $customer->is_locked ? '1' : '0' }}">
                                                     <i class="ti {{ $customer->is_locked ? 'ti-lock-open' : 'ti-lock' }} fs-16"></i>
@@ -375,7 +378,8 @@
                                             <li>
                                                 <button type="button"
                                                         class="dropdown-item d-flex align-items-center gap-2 text-danger btn-delete-customer"
-                                                        data-id="{{ $customer->id }}"
+                                                        data-action="{{ route('admin.customers.destroy', $customer) }}"
+                                                        data-id="{{ $customer->ulid }}"
                                                         data-username="{{ $customer->username }}">
                                                     <i class="ti ti-trash fs-16"></i> Delete Customer
                                                 </button>
@@ -460,6 +464,8 @@
             $(document).on('click', '.btn-toggle-lock', function () {
                 const btn = $(this);
                 const customerId = btn.data('id');
+                const actionUrl = btn.data('action') || `/admininistator/customers/${customerId}/toggle-lock`;
+                const rowId = btn.data('row-id') || customerId;
                 const username = btn.data('username');
                 const isCurrentlyLocked = String(btn.data('locked')) === '1';
                 const actionVerb = isCurrentlyLocked ? 'unlock' : 'lock';
@@ -478,14 +484,17 @@
                         btn.prop('disabled', true);
 
                         $.ajax({
-                            url: `/admininistator/customers/${customerId}/toggle-lock`,
+                            url: actionUrl,
                             type: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
                             dataType: 'json',
                             success: function (res) {
                                 const newLockedState = res.is_locked;
                                 btn.data('locked', newLockedState ? '1' : '0');
 
-                                const row = $(`#customer-row-${customerId}`);
+                                const row = $(`#customer-row-${rowId}`);
                                 const statusCell = row.find('.status-cell');
 
                                 if (newLockedState) {
